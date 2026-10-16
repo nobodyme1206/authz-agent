@@ -83,6 +83,8 @@ python3 scripts/smoke.py --source JeecgBoot
 
 Worker 测试中的本地协议 fixture 用于验证 Pi SDK 的真实工具执行流程，以及 401、400、超时与扩展隔离；它不是线上模型验收，不进入平台生产数据库。线上模型是否通过见 `docs/acceptance-batch1.md`。
 
+本次交付已补充通过 DeepSeek `deepseek-flash` 的真实模型验收，包括指定快照源码读取、结果与事件保存、SSE 续读，以及服务重启后的结果复核。可用 `python3 scripts/verify-live-job.py <job_id>` 检查既有成功任务；该脚本只读取结果，不重新调用模型。具体任务编号和故障注入方式见验收记录。
+
 ## 第一批限制
 
 - 四阶段算法和复杂依赖图后续逐批实现；当前只提供数据契约与校验函数。

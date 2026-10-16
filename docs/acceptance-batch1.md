@@ -4,6 +4,8 @@
 
 本批交付运行基础、固定源码快照、任务队列、Pi 接入和最小工作台。四阶段算法保持“待实现”。按用户要求，最终验收采用容器命令、自动化测试和 HTTP 接口，不依赖浏览器点击或页面截图。
 
+**验收结论：批次一范围内的验收项已通过。** 补充的 DeepSeek 真实模型验收已完成；Stage 1—4 算法属于后续批次。
+
 ## 已通过
 
 | 项目 | 方法与实际结果 |
@@ -18,7 +20,7 @@
 | 任务生命周期 | 创建、领取、顺序执行、排队取消、运行中取消、结果保存、迟到写入拒绝与心跳失效处理通过测试 |
 | 重启恢复 | 实际停止并启动 Worker，旧运行任务标记 `worker_interrupted`；没有自动重发模型调用。数据库/API/Web 重启后项目、快照、任务及事件仍可查询 |
 | SSE | HTTP 实测按事件编号续读；已读事件不重复返回 |
-| 缺配置 | 实际平台中无模型配置；任务明确返回 `model_not_configured`，没有伪造分析结果 |
+| 缺配置 | 初始未配置模型时，实际任务明确返回 `model_not_configured`，没有伪造分析结果；补充验收后已配置有效模型 |
 | Pi 工具链 | 受控协议服务驱动真实 Pi SDK 调用 `read_source_lines`；工具白名单校验通过，仓库自带 `.pi/extensions` 未被加载 |
 | 错误与超时 | 协议测试覆盖 401 认证失败、400 不兼容接口和挂起请求取消；公开错误使用规范错误码，持久化会话过滤测试密钥 |
 | 网络与权限 | Web UID 1000，API/Worker UID 10001，PostgreSQL UID 999；只发布 `127.0.0.1:3000`，数据库无宿主机端口；无 privileged、host network 或 Docker socket |
@@ -28,11 +30,35 @@
 
 SQLite 与 PostgreSQL 是同一套 7 项测试的两次执行，不能将其视为 14 项独立测试。Pi 协议 fixture 是自动化测试输入，只在临时测试目录中运行，不代表真实模型通过验收，也不作为平台漏洞分析成果。
 
-## 尚未执行
+## DeepSeek 真实模型补充验收
 
-- **真实模型成功验收**：当前未提供模型 Base URL、模型 ID 和 API Key，无法验证指定真实服务的流式工具调用、可用额度与模型实际表现。配置后需提交独立 `agent_probe`，检查指定源码读取、正常返回、耗时和服务可提供的用量。
-- **真实服务的认证失败与超时验收**：错误路径已在受控协议测试中验证，未对未配置的真实服务发起请求。
-- **Stage 1—4 算法验收**：属于后续批次，本批仅验证数据结构与基础设施。
+使用用户提供的密钥，只保存在被 Git 忽略的本地密钥文件，并只读挂载至 Worker。端点为 `https://api.deepseek.com`，模型为 `deepseek-flash`。模型和工具调用格式依据 [官方首次调用说明](https://api-docs.deepseek.com/) 与 [工具调用文档](https://api-docs.deepseek.com/guides/tool_calls/) 核对，并通过实际请求验证。
+
+| 项目 | 实际结果 |
+|---|---|
+| 认证与模型清单 | 官方 `/models` 返回 200，包含所选模型 |
+| 成功任务 | `run-46eccde19f75439daead449c2de672d1`，状态 `completed`，无错误；从提交到观察完成约 4.08 秒 |
+| 请求链路 | HTTP 创建任务 → PostgreSQL 排队 → Worker 领取 → Pi SDK 调用真实模型 → 工具读取 → 模型回复 → 结果与事件落库 |
+| 指定源码 | 固定快照内 `jeecg-boot/jeecg-module-system/jeecg-system-biz/src/main/java/org/jeecg/modules/system/controller/SysTenantController.java`，第 1 行 |
+| 内容核对 | 一次 `read_source_lines` 调用，模型回复中的 `package org.jeecg.modules.system.controller;` 与证据读取接口返回的快照内容一致 |
+| 事件 | `queued`、`started`、两次 `model_turn`、`tool_started`、成功的 `tool_finished`、`completed`；编号连续，按 Last-Event-ID 续读无遗漏和重复 |
+| 用量 | Pi SDK 返回 `input=741`、`output=281`、`cacheRead=640`、`cacheWrite=0`。保留字段原义，不把 SDK 中占位为零的价格配置视为真实账单 |
+| 认证失败 | 临时验收 Worker 使用故意无效的凭据访问官方接口，任务 `run-cc9680659f46422ab6bcaae08239b2d3` 明确失败，错误为 `model_authentication_failed` |
+| 超时 | 临时验收 Worker 将应用预算设为 50 毫秒并使用官方接口，任务 `run-cbfb253120f3426e9728a04041a05d2d` 明确失败，错误为 `model_timeout`。这是应用截止时间故障注入，不声称官方服务发生了超时故障 |
+| 恢复与持久化 | 临时验收容器已移除，正常 Worker 已恢复；随后重启四服务，成功结果保持一致，源码核对及 SSE 续读复核通过 |
+| 密钥检查 | 四服务健康，普通日志、页面、健康响应扫描通过；另扫描 runs 卷中的 12 个运行文件，未发现实际模型密钥 |
+
+上述任务均为 `agent_probe`；失败任务不会产生阶段分析结果。源码快照、运行回复、会话文件和密钥不随验收文档进入 Git。`artifacts/live-model-result.json`、`artifacts/live-model-errors.json` 与 `artifacts/verified-live-job.json` 保存本地验收详情。
+
+成功任务可使用以下命令复核；只读取既有任务，不发起新的收费模型调用：
+
+```sh
+python3 scripts/verify-live-job.py run-46eccde19f75439daead449c2de672d1
+```
+
+## 后续批次范围
+
+Stage 1—4 算法尚未实现，本批仅验证数据结构与基础设施。本次真实模型验收证明指定配置下的基础工具调用链路可用，不代表授权分析算法的准确率已验证。
 
 ## 发现的问题与当前限制
 
