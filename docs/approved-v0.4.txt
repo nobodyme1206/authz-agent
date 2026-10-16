@@ -1,0 +1,528 @@
+- 程序填写任务元数据，Agent 重点输出分析内容。
+- Stage 1 批量提取 API；Stage 2—4 按 API 分批分析。
+- 授权规则首先使用明确的文字描述，不强制生成复杂表达式。
+- 源码证据、关键条件和不确定性必须保留。
+- 映射、传播路径和多操作关联，只在影响判断时展开。
+- Web 平台、后端、Agent Worker 和数据库在 Docker 中运行，依赖安装与分析执行不污染宿主机环境。
+以下 N5 示例用于说明格式，不代表工具已经完成扫描。
+平台保存结果时使用：
+```json
+{
+  "schema_version": "0.4",
+  "project_id": "jeecgboot",
+  "source_revision": "源码提交号或快照哈希",
+  "run_id": "run-001",
+  "stage": 1,
+  "status": "completed",
+  "data": {}
+}
+```
+Key
+Value 类型
+含义
+填写方
+schema_version
+String
+输出结构版本
+程序
+project_id
+String
+项目标识
+程序
+source_revision
+String
+本次分析对应的固定源码版本
+程序
+run_id
+String
+扫描任务标识
+程序
+stage
+Integer
+1—4
+程序
+status
+String
+completed、partial、failed，表示任务执行状态
+程序
+data
+Object
+当前阶段分析结果
+分析工具与 Agent
+Agent 不需要每次生成公共元数据。程序负责包装、校验和保存。
+任务成功结束不代表分析完整。分析中的缺失证据和待核查问题，统一记录在 data.unresolved；Stage 1 则记录在对应 API 的 unresolved 中。
+```json
+{
+  "file": "相对于项目根目录的文件路径",
+  "start_line": 197,
+  "end_line": 203
+}
+```
+Key
+Value 类型
+含义
+file
+String
+项目相对路径
+start_line
+Integer
+起始行，从 1 开始
+end_line
+Integer
+结束行，包含该行
+程序根据固定源码版本读取代码片段、校验位置，并生成完整文件路径。不要求 Agent 重复抄写源码。
+宿主机路径与容器路径通过平台项目配置映射，证据中不保存依赖某台机器的容器绝对路径。
+识别 API、请求字段及入口代码位置。
+1. 解析后端路由，得到 HTTP 方法和路径。
+2. 定位 API 所在文件和入口行号。
+3. 提取 Path、Query、Body、Form、Header 中的请求字段。
+4. 展开嵌套 DTO；结合读取操作恢复 Map、JSONObject 中的字段。
+5. 识别影响后续分析的特殊情况，例如集合编码、动态字段。
+6. 记录无法解析的内容。
+data 包含 apis 列表。每个 API 的核心字段如下：
+Key
+Value 类型
+含义
+api_id
+String
+程序生成的 API 标识
+method
+String
+HTTP 方法
+path
+String
+后端接口路径
+file
+String
+API 入口所在文件路径
+line
+Integer
+入口方法行号
+request_fields
+List[Object]
+请求字段
+unresolved
+List[String]
+未解析问题，没有则为 []
+每个请求字段包含：
+Key
+Value 类型
+是否必填
+含义
+name
+String
+是
+字段名称，嵌套字段使用完整名称
+location
+String
+是
+body、query、path、form、header
+type
+String / null
+是
+后端读取或绑定类型，未知填 null
+note
+String
+按需
+集合编码、默认行为等关键说明
+evidence
+List[Object]
+按需
+DTO 定义、动态读取等额外位置
+```json
+{
+  "apis": [
+    {
+      "api_id": "api-001",
+      "method": "POST",
+      "path": "/sys/sysDepartRole/deptRoleUserAdd",
+      "file": "jeecg-boot/jeecg-module-system/jeecg-system-biz/src/main/java/org/jeecg/modules/system/controller/SysDepartRoleController.java",
+      "line": 199,
+      "request_fields": [
+        {
+          "name": "userId",
+          "location": "body",
+          "type": "string",
+          "note": "待分配角色的目标用户ID"
+        },
+        {
+          "name": "newRoleId",
+          "location": "body",
+          "type": "string",
+          "note": "逗号分隔的角色ID列表"
+        },
+        {
+          "name": "oldRoleId",
+          "location": "body",
+          "type": "string",
+          "note": "客户端提交的原角色ID列表"
+        }
+      ],
+      "unresolved": []
+    }
+  ]
+}
+```
+响应字段不在本阶段全量展开，Stage 3 需要时再提取。
+- API、字段和源码位置准确。
+- 同名字段能通过位置区分，例如 body:id 与 query:id。
+- 不将前端变量误认为目标接口参数；例如 N5 保存接口没有接收 departId。
+- 未知类型、动态字段明确记录，不补造结果。
+识别后端实际执行的授权检查，理解检查保护的资源操作。
+1. 从入口追踪 Controller、Service、Mapper／SQL。
+2. 查找权限注解、身份读取、条件分支、查询过滤及相关统一鉴权。
+3. 判断检查针对请求者还是目标用户。
+4. 理解请求字段如何影响实际资源操作。
+5. 核对检查是否在操作前有效阻止不满足条件的请求。
+6. 记录已分析范围和未解决问题。
+每次分析一个 API，data 包含：
+Key
+Value 类型
+含义
+api_id
+String
+对应 API
+operation
+Object
+实际操作及关键字段关系
+checks
+List[Object]
+实际发现的授权检查
+scope
+List[String]
+本次实际核查的范围
+unresolved
+List[String]
+尚未解决的问题
+operation 的核心字段：
+Key
+Value 类型
+含义
+description
+String
+操作什么资源，以及字段如何参与操作
+evidence
+List[Object]
+操作的源码证据
+每条检查的核心字段：
+Key
+Value 类型
+含义
+id
+String
+检查编号
+fields
+List[String]
+关联字段；[] 表示 API 级检查
+rule
+String
+实际检查内容，包括主体、对象及执行效果
+evidence
+List[Object]
+检查位置
+按需字段：
+Key
+使用条件
+conditions
+检查受配置、身份或分支限制时必须记录
+bindings
+请求者、目标用户、数据库值等容易混淆时记录来源映射
+operations
+API 存在多种需要分别判断的操作时，替代单个 operation
+operation_ids
+需要明确某条检查保护哪些操作时使用
+使用 operations 时，每个操作增加程序分配的 id，其余仍采用 description 和 evidence。同一结果中 operation 与 operations 二选一。
+```json
+{
+  "api_id": "api-001",
+  "operation": {
+    "description": "根据客户端提交的newRoleId和oldRoleId计算差异，为userId对应的目标用户新增或删除部门角色关系。oldRoleId不是服务端重新读取的数据库旧值。",
+    "evidence": [
+      {
+        "file": "jeecg-boot/jeecg-module-system/jeecg-system-biz/src/main/java/org/jeecg/modules/system/service/impl/SysDepartRoleUserServiceImpl.java",
+        "start_line": 31,
+        "end_line": 48
+      }
+    ]
+  },
+  "checks": [
+    {
+      "id": "check-1",
+      "fields": [],
+      "rule": "进入该方法前，当前请求者必须具有system:depart:role:userAdd权限。",
+      "evidence": [
+        {
+          "file": "jeecg-boot/jeecg-module-system/jeecg-system-biz/src/main/java/org/jeecg/modules/system/controller/SysDepartRoleController.java",
+          "start_line": 197,
+          "end_line": 203
+        }
+      ]
+    }
+  ],
+  "scope": [
+    "Controller入口权限注解与调用",
+    "Service中的角色关系新增和删除"
+  ],
+  "unresolved": [
+    "仍需核查相关统一鉴权机制是否限制目标部门范围"
+  ]
+}
+```
+- “检查目标用户属于租户”不能解释为“检查请求者有管理权限”。
+- 检查失败必须真正阻止对应操作。
+- 检查和操作必须针对相同资源。
+- SQL 或统一机制中的有效授权检查不能遗漏。
+- checks: [] 只表示当前未发现检查，不自动证明整个系统没有检查。
+推断目标 API 应满足的授权要求，并说明其依据。
+1. 定位前端调用及使用场景。
+2. 查找按钮显示、编辑禁用、字段赋值等显式线索。
+3. 追踪请求字段的来源。
+4. 字段来自上游响应时，继续追踪后端查询范围。
+5. 区分授权规则与分页、搜索、格式校验等功能条件。
+6. 核对要求关联的资源、操作、适用场景及例外。
+7. 保存要求和必要的传播证据。
+每次分析一个 API，data 包含：
+Key
+Value 类型
+含义
+api_id
+String
+目标 API
+requirements
+List[Object]
+推断出的授权要求
+unresolved
+List[String]
+未明确的来源、政策或适用性
+每条要求的核心字段：
+Key
+Value 类型
+含义
+id
+String
+要求编号
+fields
+List[String]
+关联请求字段；[] 表示 API 级要求
+rule
+String
+预期授权要求
+basis
+String
+explicit 或 inferred
+evidence
+List[Object]
+要求来源的源码证据
+按需字段：
+Key
+使用条件
+conditions
+要求只在特定场景成立，或存在例外时必须记录
+trace
+要求依赖跨组件、跨 API 传播时必须记录
+bindings
+需要解释身份、资源属性或字段映射时使用
+operation_ids
+要求只约束 API 中部分操作时使用
+explicit 表示直接来自代码条件，但仍需要核对操作数来源；inferred 表示根据范围或使用流程推断，不等同于已经确认全局授权政策。
+```json
+{
+  "api_id": "api-001",
+  "requirements": [
+    {
+      "id": "req-1",
+      "fields": ["body:newRoleId"],
+      "rule": "根据我的部门角色分配流程推断，实际新增角色的所属部门应位于当前请求者可管理的部门范围内。",
+      "basis": "inferred",
+      "conditions": [
+        "该要求依据我的部门工作流推断"
+      ],
+      "trace": [
+        "后端从当前登录主体取得负责部门ID。",
+        "根据负责部门组织编码生成可选部门树。",
+        "前端选中部门，其ID成为角色查询请求中的departId。",
+        "该部门角色列表中的角色ID被选中并提交为newRoleId。"
+      ],
+      "evidence": [
+        {
+          "file": "jeecg-boot/jeecg-module-system/jeecg-system-biz/src/main/java/org/jeecg/modules/system/controller/SysDepartController.java",
+          "start_line": 83,
+          "end_line": 90
+        },
+        {
+          "file": "jeecg-boot/jeecg-module-system/jeecg-system-biz/src/main/java/org/jeecg/modules/system/service/impl/SysDepartServiceImpl.java",
+          "start_line": 76,
+          "end_line": 98
+        },
+        {
+          "file": "jeecg-boot/jeecg-module-system/jeecg-system-biz/src/main/java/org/jeecg/modules/system/controller/SysDepartRoleController.java",
+          "start_line": 182,
+          "end_line": 188
+        },
+        {
+          "file": "jeecgboot-vue3/src/views/system/departUser/components/DepartRoleUserAuthDrawer.vue",
+          "start_line": 38,
+          "end_line": 68
+        }
+      ]
+    }
+  ],
+  "unresolved": [
+    "仍需核对其他合法分配流程是否允许跨部门分配。",
+    "传播链中间的组件传值位置需要补齐证据。"
+  ]
+}
+```
+trace 第一版可以采用文字步骤，但每个关键跳转都应有证据支持。遇到复杂传播时，可将步骤展开为下述结构；同一条 trace 采用一致形式：
+```json
+{
+  "from": "来源字段",
+  "to": "目标字段",
+  "evidence": []
+}
+```
+上例是格式占位，正式结论的关键传播步骤必须补充有效证据。不能只因为字段名称相同，就认定存在传播关系。
+- 要求有真实代码依据。
+- 条件关联正确主体和资源。
+- 隐式范围的可信来源得到追溯。
+- 不把普通筛选条件机械传播成授权要求。
+- requirements: [] 不表示 API 安全。
+比较实际检查与预期要求，输出覆盖结论或疑似授权缺口。
+1. 对齐目标 API、字段、主体、资源和操作。
+2. 比较实际检查是否等价于或强于预期要求。
+3. 核对配置、管理员例外、AND／OR 和执行分支。
+4. 确认相关字段确实影响实际资源操作。
+5. 检查前面阶段的未解决问题是否影响当前结论。
+6. 输出结果、理由和必要的补查任务。
+每次分析一个 API，data 包含：
+Key
+Value 类型
+含义
+api_id
+String
+对应 API
+comparisons
+List[Object]
+每条要求的比较结果
+unresolved
+List[String]
+API 整体尚未解决的问题
+每条比较的核心字段：
+Key
+Value 类型
+含义
+requirement_id
+String
+Stage 3 中的要求编号
+check_ids
+List[String]
+参与比较的实际检查
+result
+String
+covered、potential_gap、unknown
+reason
+String
+判断理由和适用范围
+按需字段：
+Key
+使用条件
+operation_id
+需要区分多个操作时使用
+scenario
+形成疑似缺口时，描述违规场景
+unresolved
+当前这条比较有具体待补证据时使用
+结果含义：
+Value
+含义
+covered
+在已分析的适用条件和路径内，检查覆盖要求
+potential_gap
+要求有依据，相关路径支持疑似授权缺口，尚不表示运行复现
+unknown
+规则适用性、对象映射或关键路径不足以确定
+对应前述仍有未解决问题的示例：
+```json
+{
+  "api_id": "api-001",
+  "comparisons": [
+    {
+      "requirement_id": "req-1",
+      "check_ids": ["check-1"],
+      "result": "unknown",
+      "reason": "已识别的操作权限检查未表达部门范围限制，但统一鉴权机制、传播证据及跨部门分配例外尚未核实。",
+      "unresolved": [
+        "核查有效的统一范围保护",
+        "补齐传播链证据",
+        "核对跨部门分配例外"
+      ]
+    }
+  ],
+  "unresolved": []
+}
+```
+补查支持缺口后，可更新为 potential_gap，并增加：
+```json
+{
+  "scenario": "请求者具有角色分配权限但只管理部门A，提交部门B的角色ID，相关保存路径未验证角色所属部门是否在请求者管理范围内。"
+}
+```
+运行验证结果由平台单独管理，不与静态覆盖结果混为一谈。首版四阶段默认进行静态源码分析，不自动部署被测系统或执行漏洞请求。
+- 比较的是授权语义，不是代码形式。
+- 检查与要求约束相同资源和操作。
+- 不遗漏 SQL 或统一机制的等价保护。
+- 不因关键路径未解析就直接报告漏洞。
+- 不因未提取到要求就判断安全。
+初版不强制输出复杂 predicate 或 constraint，但 rule 必须表达清楚：
+```text
+主体：谁发起操作，谁是目标用户
+资源：操作哪条数据或哪类关系
+条件：需要满足什么关系或权限
+场景：在哪些情况下成立
+```
+示例：
+```text
+不够明确：
+用户必须属于租户。
+
+明确：
+请求中userId对应的目标用户，必须属于tenantId对应的租户。
+```
+```text
+不够明确：
+roleCode不能修改。
+
+明确：
+编辑已有角色时，提交的roleCode应与数据库中原roleCode保持一致。
+```
+N1 的 record.username === record.createBy 首先表示两个行数据属性相等，不能未经来源追溯就归一化成“当前请求者是 owner”。
+如果评估发现自然语言比较持续产生歧义，再为高频规则增加轻量结构化条件，不提前要求所有案例使用统一表达式树。
+采用 Pi 作为 Agent 运行底座。Pi 按阶段和 API 调用源码工具，分批保存检查、要求和比较结果。四个 Stage 是工作阶段，不要求实现成四个独立 Agent。
+程序负责：
+- 路由、字段等可确定信息的提取。
+- ID 分配和引用校验。
+- 源码路径、行号与版本校验。
+- 结果保存、失败恢复和前端展示。
+- 按需向 Agent 提供相关上下文。
+Agent 负责：
+- 决定需要继续查看和追踪的相关代码。
+- 理解授权检查的主体、对象与业务含义。
+- 提取要求并补齐关键传播证据。
+- 比较要求与实现，提出候选缺口和补查任务。
+Stage 2 与 Stage 3 均依赖 Stage 1 的 API 入口信息，逻辑上可以分别开展。对比时读取两者结果；遇到关键未知，回到对应阶段补证据，而不是重新扫描全部项目。
+采用 Docker Compose 管理首版服务：
+服务
+技术与职责
+数据访问
+web
+Next.js + TypeScript，可视化与任务交互
+通过后端访问结果
+api
+Python + FastAPI，项目、任务、结果与配置管理
+数据库和任务产物
+agent-worker
+Node.js／TypeScript + Pi SDK，执行四阶段分析
+只读源码、可写任务目录、必要的模型接口
+db
+PostgreSQL，持久化任务、阶段结果及索引
+独立数据库数据卷

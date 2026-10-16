@@ -1,0 +1,115 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "0.4"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_revision": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stage": {
+      "const": 4
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "partial",
+        "failed"
+      ]
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "api_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "comparisons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "requirement_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "check_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "result": {
+                "enum": [
+                  "covered",
+                  "potential_gap",
+                  "unknown"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "operation_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scenario": {
+                "type": "string",
+                "minLength": 1
+              },
+              "unresolved": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "requirement_id",
+              "check_ids",
+              "result",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "unresolved": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "api_id",
+        "comparisons",
+        "unresolved"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "project_id",
+    "source_revision",
+    "run_id",
+    "stage",
+    "status",
+    "data"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

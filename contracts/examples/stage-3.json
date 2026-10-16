@@ -1,0 +1,56 @@
+{
+  "schema_version": "0.4",
+  "project_id": "example",
+  "source_revision": "example-snapshot",
+  "run_id": "example-run",
+  "stage": 3,
+  "status": "completed",
+  "data": {
+    "api_id": "api-001",
+    "requirements": [
+      {
+        "id": "req-1",
+        "fields": [
+          "body:newRoleId"
+        ],
+        "rule": "根据我的部门角色分配流程推断，实际新增角色的所属部门应位于当前请求者可管理的部门范围内。",
+        "basis": "inferred",
+        "conditions": [
+          "该要求依据我的部门工作流推断"
+        ],
+        "trace": [
+          "后端从当前登录主体取得负责部门ID。",
+          "根据负责部门组织编码生成可选部门树。",
+          "前端选中部门，其ID成为角色查询请求中的departId。",
+          "该部门角色列表中的角色ID被选中并提交为newRoleId。"
+        ],
+        "evidence": [
+          {
+            "file": "jeecg-boot/jeecg-module-system/jeecg-system-biz/src/main/java/org/jeecg/modules/system/controller/SysDepartController.java",
+            "start_line": 83,
+            "end_line": 90
+          },
+          {
+            "file": "jeecg-boot/jeecg-module-system/jeecg-system-biz/src/main/java/org/jeecg/modules/system/service/impl/SysDepartServiceImpl.java",
+            "start_line": 76,
+            "end_line": 98
+          },
+          {
+            "file": "jeecg-boot/jeecg-module-system/jeecg-system-biz/src/main/java/org/jeecg/modules/system/controller/SysDepartRoleController.java",
+            "start_line": 182,
+            "end_line": 188
+          },
+          {
+            "file": "jeecgboot-vue3/src/views/system/departUser/components/DepartRoleUserAuthDrawer.vue",
+            "start_line": 38,
+            "end_line": 68
+          }
+        ]
+      }
+    ],
+    "unresolved": [
+      "仍需核对其他合法分配流程是否允许跨部门分配。",
+      "传播链中间的组件传值位置需要补齐证据。"
+    ]
+  }
+}

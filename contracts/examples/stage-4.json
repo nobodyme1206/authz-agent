@@ -1,0 +1,27 @@
+{
+  "schema_version": "0.4",
+  "project_id": "example",
+  "source_revision": "example-snapshot",
+  "run_id": "example-run",
+  "stage": 4,
+  "status": "completed",
+  "data": {
+    "api_id": "api-001",
+    "comparisons": [
+      {
+        "requirement_id": "req-1",
+        "check_ids": [
+          "check-1"
+        ],
+        "result": "unknown",
+        "reason": "已识别的操作权限检查未表达部门范围限制，但统一鉴权机制、传播证据及跨部门分配例外尚未核实。",
+        "unresolved": [
+          "核查有效的统一范围保护",
+          "补齐传播链证据",
+          "核对跨部门分配例外"
+        ]
+      }
+    ],
+    "unresolved": []
+  }
+}

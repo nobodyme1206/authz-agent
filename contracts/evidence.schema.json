@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "start_line": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "end_line": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "file",
+    "start_line",
+    "end_line"
+  ],
+  "additionalProperties": false
+}

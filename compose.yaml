@@ -1,0 +1,119 @@
+name: authz-agent
+services:
+  db:
+    image: postgres:17-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
+    user: postgres
+    environment:
+      POSTGRES_DB: authz
+      POSTGRES_USER: authz
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    volumes: [database:/var/lib/postgresql/data]
+    networks: [storage]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U authz -d authz']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      INTERNAL_TOKEN_FILE: /run/secrets/internal_token
+      SOURCE_ROOT: /sources
+      SNAPSHOT_ROOT: /snapshots
+      RUN_ROOT: /runs
+    secrets: [db_password, internal_token]
+    volumes:
+      - type: bind
+        source: ${SOURCE_ROOT:-../project}
+        target: /sources
+        read_only: true
+        bind:
+          create_host_path: false
+      - snapshots:/snapshots
+      - runs:/runs
+    networks: [storage, control]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      db: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    restart: unless-stopped
+  agent-worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      API_URL: http://api:8000
+      INTERNAL_TOKEN_FILE: /run/secrets/internal_token
+      MODEL_API_KEY_FILE: /run/secrets/model_api_key
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-}
+      MODEL_ID: ${MODEL_ID:-}
+      MODEL_CONTEXT_WINDOW: ${MODEL_CONTEXT_WINDOW:-32000}
+      MODEL_MAX_TOKENS: ${MODEL_MAX_TOKENS:-2048}
+      PROBE_TIMEOUT_SECONDS: ${PROBE_TIMEOUT_SECONDS:-90}
+      SNAPSHOT_ROOT: /snapshots
+      RUN_ROOT: /runs
+    secrets: [internal_token, model_api_key]
+    volumes: [snapshots:/snapshots:ro, runs:/runs]
+    networks: [control, model_egress]
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,size=128m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: ${WORKER_CPUS:-2}
+    mem_limit: ${WORKER_MEMORY:-4g}
+    pids_limit: ${WORKER_PIDS:-256}
+    init: true
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, "const f=require('fs');const s=JSON.parse(f.readFileSync('/runs/worker-health.json'));process.exit(Date.now()-s.seen<45000?0:1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    environment:
+      API_URL: http://api:8000
+    ports: ['127.0.0.1:${WEB_PORT:-3000}:3000']
+    networks: [control, web_edge]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  database:
+  snapshots:
+  runs:
+networks:
+  storage: {internal: true}
+  control: {internal: true}
+  web_edge:
+  model_egress:
+secrets:
+  db_password: {file: ./.secrets/db_password}
+  internal_token: {file: ./.secrets/internal_token}
+  model_api_key: {file: ./.secrets/model_api_key}

@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+.secrets/
+node_modules/
+.next/
+dist/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.tsbuildinfo
+coverage/
+artifacts/
+runs/
+snapshots/
+data/
+.DS_Store

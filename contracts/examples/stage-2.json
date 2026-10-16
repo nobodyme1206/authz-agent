@@ -1,0 +1,42 @@
+{
+  "schema_version": "0.4",
+  "project_id": "example",
+  "source_revision": "example-snapshot",
+  "run_id": "example-run",
+  "stage": 2,
+  "status": "completed",
+  "data": {
+    "api_id": "api-001",
+    "operation": {
+      "description": "根据客户端提交的newRoleId和oldRoleId计算差异，为userId对应的目标用户新增或删除部门角色关系。oldRoleId不是服务端重新读取的数据库旧值。",
+      "evidence": [
+        {
+          "file": "jeecg-boot/jeecg-module-system/jeecg-system-biz/src/main/java/org/jeecg/modules/system/service/impl/SysDepartRoleUserServiceImpl.java",
+          "start_line": 31,
+          "end_line": 48
+        }
+      ]
+    },
+    "checks": [
+      {
+        "id": "check-1",
+        "fields": [],
+        "rule": "进入该方法前，当前请求者必须具有system:depart:role:userAdd权限。",
+        "evidence": [
+          {
+            "file": "jeecg-boot/jeecg-module-system/jeecg-system-biz/src/main/java/org/jeecg/modules/system/controller/SysDepartRoleController.java",
+            "start_line": 197,
+            "end_line": 203
+          }
+        ]
+      }
+    ],
+    "scope": [
+      "Controller入口权限注解与调用",
+      "Service中的角色关系新增和删除"
+    ],
+    "unresolved": [
+      "仍需核查相关统一鉴权机制是否限制目标部门范围"
+    ]
+  }
+}

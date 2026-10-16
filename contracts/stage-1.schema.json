@@ -1,0 +1,166 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "0.4"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_revision": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stage": {
+      "const": 1
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "partial",
+        "failed"
+      ]
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "apis": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "api_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "method": {
+                "enum": [
+                  "GET",
+                  "POST",
+                  "PUT",
+                  "PATCH",
+                  "DELETE",
+                  "HEAD",
+                  "OPTIONS",
+                  "TRACE"
+                ]
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "file": {
+                "type": "string",
+                "minLength": 1
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "request_fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "location": {
+                      "enum": [
+                        "body",
+                        "query",
+                        "path",
+                        "form",
+                        "header"
+                      ]
+                    },
+                    "type": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "note": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "evidence": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "file": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "start_line": {
+                            "type": "integer",
+                            "minimum": 1
+                          },
+                          "end_line": {
+                            "type": "integer",
+                            "minimum": 1
+                          }
+                        },
+                        "required": [
+                          "file",
+                          "start_line",
+                          "end_line"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "location",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "unresolved": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "api_id",
+              "method",
+              "path",
+              "file",
+              "line",
+              "request_fields",
+              "unresolved"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "apis"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "project_id",
+    "source_revision",
+    "run_id",
+    "stage",
+    "status",
+    "data"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

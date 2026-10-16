@@ -1,0 +1,40 @@
+{
+  "schema_version": "0.4",
+  "project_id": "example",
+  "source_revision": "example-snapshot",
+  "run_id": "example-run",
+  "stage": 1,
+  "status": "completed",
+  "data": {
+    "apis": [
+      {
+        "api_id": "api-001",
+        "method": "POST",
+        "path": "/sys/sysDepartRole/deptRoleUserAdd",
+        "file": "jeecg-boot/jeecg-module-system/jeecg-system-biz/src/main/java/org/jeecg/modules/system/controller/SysDepartRoleController.java",
+        "line": 199,
+        "request_fields": [
+          {
+            "name": "userId",
+            "location": "body",
+            "type": "string",
+            "note": "待分配角色的目标用户ID"
+          },
+          {
+            "name": "newRoleId",
+            "location": "body",
+            "type": "string",
+            "note": "逗号分隔的角色ID列表"
+          },
+          {
+            "name": "oldRoleId",
+            "location": "body",
+            "type": "string",
+            "note": "客户端提交的原角色ID列表"
+          }
+        ],
+        "unresolved": []
+      }
+    ]
+  }
+}
