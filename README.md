@@ -1,6 +1,6 @@
 # Authz Agent
 
-以源码证据驱动的授权分析工作台。第一批交付 Docker 运行基础、源码快照、任务链路与 Pi 接入。**Stage 1—4 分析算法尚未实现，界面不会生成模拟漏洞结论。**
+以源码证据驱动的授权分析工作台。已实现 Docker 运行基础、源码快照、任务链路、Pi 接入，以及 **Stage 1：JeecgBoot / Java Spring MVC 的 API 与请求字段提取**。Stage 2—4 授权分析尚未实现。
 
 ## 技术组成
 
@@ -8,7 +8,7 @@
 - `api`：Python 3.12 / FastAPI / SQLAlchemy。
 - `agent-worker`：Node.js 24 / Pi Coding Agent SDK 1.3.0。
 - `db`：PostgreSQL 17。
-- 四阶段数据契约：`contracts/stage-*.schema.json`，版本 `0.4`；最终确认原文见 `docs/approved-v0.4.txt`。
+- 四阶段数据契约：`contracts/stage-*.schema.json`，版本 `0.4`；最终确认原文见 `docs/approved-v0.4.txt`。批次二兼容增加 `method: "ANY"` 表示源码未限定方法，其他核心字段不变。
 
 ## 本地启动
 
@@ -25,7 +25,7 @@ docker compose up --build -d
 docker compose up -d --force-recreate api
 ```
 
-在界面登记源码目录、创建快照后，可以浏览源码证据或提交独立的 Agent 连通性任务。快照可能需要等待，期间不会执行被测项目的代码。默认不接收上传或自动拉取远端源码。
+在界面登记源码目录、创建快照后，可进入“API 提取”启动 Stage 1，也可浏览源码证据或提交独立的 Agent 连通性任务。快照可能需要等待，期间不会执行被测项目的代码。默认不接收上传或自动拉取远端源码。
 
 ## 配置模型
 
@@ -38,7 +38,7 @@ docker compose up -d --force-recreate api
 
 若服务运行在宿主机上，容器中的 `localhost` 指向容器自身，应使用 Docker Desktop 的宿主机地址。不要使用包含用户名、密码或密钥查询参数的 Base URL。
 
-初始密钥文件为空，未配置时平台正常启动，任务以 `model_not_configured` 明确失败，不返回模拟成功。Responses-only 接口不在本批适配范围。
+初始密钥文件为空，未配置时平台正常启动。Probe 以 `model_not_configured` 明确失败；Stage 1 仍保存程序结果，跳过模型补全并记录原因，不伪造补全成功。Responses-only 接口不在本批适配范围。
 
 ## 隔离边界
 
@@ -49,8 +49,8 @@ docker compose up -d --force-recreate api
 - 读取源码限制为 UTF-8 文本、文件不超过 8 MiB。API 单次最多 300 行，Pi 工具最多 100 行；单段内容最多 64 KiB。
 - 应用和数据库进程使用非 root 用户。应用根文件系统只读，Worker 默认 2 CPU / 4 GiB / 256 进程。
 - 不挂载 Docker socket，不自动加载被测仓库的 Pi 扩展、技能、AGENTS 指令或脚本。
-- Pi 仅有 `list_source_files`、`read_source_lines` 两个受限工具。没有通用 Shell、编辑或网络工具；模型调用通过 Worker 的专用出口网络完成。
-- Probe 默认超时 90 秒，最多 6 次工具执行及有限模型轮次，不自动重试收费模型请求。
+- Probe 有文件列表与源码读取工具；Stage 1 额外启用索引内搜索、符号定位与结构化字段提交。没有通用 Shell、编辑或网络工具；模型调用通过 Worker 的专用出口网络完成。
+- Probe 默认超时 90 秒、最多 6 次工具执行；Stage 1 使用独立预算。均不自动重试收费模型请求。
 - Pi 会话先保存在内存，在任务结束时写出脱敏的 `transcript.json`；模型密钥不写入会话配置。
 - `.secrets` 主目录权限 700；文件只读挂载到所需服务。目录内文件对容器非 root 用户可读，因此不要改变目录权限或提交该目录。
 
@@ -58,7 +58,7 @@ docker compose up -d --force-recreate api
 
 ## 任务与结果
 
-- 当前任务类型是 `agent_probe`，不是漏洞扫描，不产生四阶段分析结果。
+- 任务类型为 `agent_probe` 和 `stage1_extract`；只有后者产生 v0.4 Stage 1 成果，二者均不判断漏洞。
 - 内部状态：`queued`、`running`、`cancel_requested`、`completed`、`failed`、`cancelled`。
 - Worker 轮询 PostgreSQL 队列，领取和写事件在数据库事务内完成；单 Worker 顺序执行。
 - Worker 每次启动使用新的身份。重启会将旧身份的运行任务标记为 `worker_interrupted`，不自动重跑模型请求。无心跳超过 90 秒的运行任务也会标记中断。
@@ -85,13 +85,30 @@ Worker 测试中的本地协议 fixture 用于验证 Pi SDK 的真实工具执�
 
 本次交付已补充通过 DeepSeek `deepseek-flash` 的真实模型验收，包括指定快照源码读取、结果与事件保存、SSE 续读，以及服务重启后的结果复核。可用 `python3 scripts/verify-live-job.py <job_id>` 检查既有成功任务；该脚本只读取结果，不重新调用模型。具体任务编号和故障注入方式见验收记录。
 
-## 第一批限制
+## 当前限制
 
-- 四阶段算法和复杂依赖图后续逐批实现；当前只提供数据契约与校验函数。
+- Stage 2—4 算法和复杂传播图留待后续批次。Stage 1 的框架支持与追踪边界见 `docs/stage1.md`。
 - 这是本机单用户工作空间，不具有面向公网的身份认证和多用户隔离。
-- 数据库首版通过 SQLAlchemy 非破坏性建表初始化；后续修改数据库结构时需提供显式迁移，不能自动重建研究数据。
+- 启动时执行显式增量迁移 `0002_stage1`，为旧任务增加 options 并创建 Stage 1 表，保留原有数据。后续结构变更继续新增迁移，不能重建研究数据。
 - 快照采用同步接口创建；源码持续变化会导致失败，应该在固定源码上重试。
 - 源码文件列表按路径前缀过滤，最多返回 200 项；页面默认 100 项。
 - 本批不构建或运行被测应用，不发送漏洞利用请求。
 
 接口与开发约定见 `docs/interfaces.md`；实际验收见 `docs/acceptance-batch1.md`。
+
+## Stage 1 使用与验收
+
+选择项目及快照，打开“API 提取”。扫描目录默认 `jeecg-boot`；目录限制 Controller 范围，相关 DTO、常量和 helper 仍从同一快照的生产源码索引读取。取消自动补全时不产生模型调用。
+
+```sh
+python3 scripts/stage1-smoke.py
+# 明确启用真实模型补全，会产生调用费用：
+python3 scripts/stage1-smoke.py --enrich
+python3 scripts/verify-stage1-samples.py <job_id>
+```
+
+API、字段及未解析项按任务和版本保存。任务执行完成不代表字段完整，必须结合阶段的 completed / partial 状态与诊断判断。页面支持分页筛选、证据读取、下载和基于检查点的继续补全。
+
+默认最多补全 20 个 API，每 API 6 轮模型回复 / 12 次工具调用 / 120 秒，单次最多输出 4,096 Token；累计预算 100,000 Token，任务最长 30 分钟。达到 Token 预算后不再开启新调用，在途请求可造成一次请求的预算超出；用量不可获得时停止继续补全。配置名见 `.env.example`。
+
+接口和实现边界见 `docs/stage1.md`；真实源码、模型效果和验收限制见 `docs/acceptance-batch2.md`。

@@ -1,0 +1,226 @@
+{
+  "source_revision": "sha256:75acb246045e195624021711446fc99b3b51ea3f1561cf89fdfc468ee45355a6",
+  "samples": [
+    {
+      "path": "/sys/tenant/changeOwenUserTenant",
+      "method": "POST",
+      "fields": [
+        "form:tenantId:string",
+        "form:userId:string",
+        "query:tenantId:string",
+        "query:userId:string"
+      ],
+      "review": "N1：两个 RequestParam；不包含 username。"
+    },
+    {
+      "path": "/sys/sysDepartRole/deptRoleUserAdd",
+      "method": "POST",
+      "fields": [
+        "body:newRoleId:string",
+        "body:oldRoleId:string",
+        "body:userId:string"
+      ],
+      "review": "N5：JSONObject 三次 getString；不包含 departId，两个角色字段为 CSV。"
+    },
+    {
+      "path": "/sys/role/add",
+      "method": "POST",
+      "fields": [
+        "body:createBy:string",
+        "body:createTime:string",
+        "body:description:string",
+        "body:id:string",
+        "body:roleCode:string",
+        "body:roleName:string",
+        "body:tenantId:integer",
+        "body:updateBy:string",
+        "body:updateTime:string"
+      ],
+      "review": "SysRole 的九个可绑定实例属性，排除 serialVersionUID。"
+    },
+    {
+      "path": "/sys/role/edit",
+      "method": "PUT",
+      "fields": [
+        "body:createBy:string",
+        "body:createTime:string",
+        "body:description:string",
+        "body:id:string",
+        "body:roleCode:string",
+        "body:roleName:string",
+        "body:tenantId:integer",
+        "body:updateBy:string",
+        "body:updateTime:string"
+      ],
+      "review": "同一 SysRole DTO；路由同时声明 POST 与 PUT。"
+    },
+    {
+      "path": "/sys/role/queryById",
+      "method": "GET",
+      "fields": [
+        "query:id:string"
+      ],
+      "review": "单个字符串 RequestParam。"
+    },
+    {
+      "path": "/sys/user/queryById",
+      "method": "GET",
+      "fields": [
+        "query:id:string"
+      ],
+      "review": "单个字符串 RequestParam。"
+    },
+    {
+      "path": "/sys/tenant/queryById",
+      "method": "GET",
+      "fields": [
+        "query:id:string"
+      ],
+      "review": "单个字符串 RequestParam。"
+    },
+    {
+      "path": "/sys/role/delete",
+      "method": "DELETE",
+      "fields": [
+        "form:id:string",
+        "query:id:string"
+      ],
+      "review": "Servlet 参数绑定保留 query/form 两种来源；不把服务端身份计为请求字段。"
+    },
+    {
+      "path": "/sys/role/deleteBatch",
+      "method": "DELETE",
+      "fields": [
+        "form:ids:string",
+        "query:ids:string"
+      ],
+      "review": "Servlet 参数绑定保留 query/form 两种来源；不把服务端身份计为请求字段。"
+    },
+    {
+      "path": "/sys/log/delete",
+      "method": "DELETE",
+      "fields": [
+        "form:id:string",
+        "query:id:string"
+      ],
+      "review": "Servlet 参数绑定保留 query/form 两种来源；不把服务端身份计为请求字段。"
+    },
+    {
+      "path": "/sys/common/upload",
+      "method": "POST",
+      "fields": [
+        "form:biz:string",
+        "form:file:file",
+        "query:biz:string"
+      ],
+      "review": "request 参数与强制转换后的 MultipartHttpServletRequest.getFile。首轮漏报 file 已修复。"
+    },
+    {
+      "path": "/sys/user/updateMobile",
+      "method": "PUT",
+      "fields": [
+        "body:phone:string",
+        "body:smscode:string",
+        "header:X-Access-Token:string"
+      ],
+      "review": "JSONObject 两键，JwtUtil.getUserNameByToken 调用中的 Header。"
+    },
+    {
+      "path": "/sys/user/saveClientId",
+      "method": "GET",
+      "fields": [
+        "header:X-Access-Token:string",
+        "query:clientId:string"
+      ],
+      "review": "显式 RequestParam 与后端 helper Header 读取。"
+    },
+    {
+      "path": "/sys/randomImage/{key}",
+      "method": "GET",
+      "fields": [
+        "path:key:string"
+      ],
+      "review": "验证码路径变量。"
+    },
+    {
+      "path": "/sys/api/queryUsersByIds",
+      "method": "ANY",
+      "fields": [
+        "form:ids:string",
+        "query:ids:string"
+      ],
+      "review": "未限定 HTTP 方法，不能填 GET；ids 的服务端读取证据包括 CSV 分割。"
+    },
+    {
+      "path": "/sys/dict/getDictItems/{dictCode}",
+      "method": "GET",
+      "fields": [
+        "path:dictCode:string",
+        "query:sign:string"
+      ],
+      "review": "路径变量与可选查询参数。"
+    },
+    {
+      "path": "/airag/chat/stop/{requestId}",
+      "method": "GET",
+      "fields": [
+        "path:requestId:string"
+      ],
+      "review": "普通业务中的命名 PathVariable。"
+    },
+    {
+      "path": "/airag/airagModel/copy/{id}",
+      "method": "POST",
+      "fields": [
+        "path:id:string"
+      ],
+      "review": "POST 的 PathVariable，不应当作 Body。"
+    },
+    {
+      "path": "/sys/sysDepartRole/getDeptRoleList",
+      "method": "GET",
+      "fields": [
+        "query:departId:string",
+        "query:userId:string"
+      ],
+      "review": "角色查询接口确实接收 departId，与 N5 保存接口区分。"
+    },
+    {
+      "path": "/test/jeecgOrderMain/add",
+      "method": "POST",
+      "fields": [
+        "body:bpmStatus:string",
+        "body:content:string",
+        "body:createBy:string",
+        "body:createTime:string",
+        "body:ctype:string",
+        "body:id:string",
+        "body:jeecgOrderCustomerList[].createBy:string",
+        "body:jeecgOrderCustomerList[].createTime:string",
+        "body:jeecgOrderCustomerList[].id:string",
+        "body:jeecgOrderCustomerList[].idcard:string",
+        "body:jeecgOrderCustomerList[].idcardPic:string",
+        "body:jeecgOrderCustomerList[].name:string",
+        "body:jeecgOrderCustomerList[].orderId:string",
+        "body:jeecgOrderCustomerList[].sex:string",
+        "body:jeecgOrderCustomerList[].telphone:string",
+        "body:jeecgOrderCustomerList[].updateBy:string",
+        "body:jeecgOrderCustomerList[].updateTime:string",
+        "body:jeecgOrderTicketList[].createBy:string",
+        "body:jeecgOrderTicketList[].createTime:string",
+        "body:jeecgOrderTicketList[].id:string",
+        "body:jeecgOrderTicketList[].orderId:string",
+        "body:jeecgOrderTicketList[].tickectDate:string",
+        "body:jeecgOrderTicketList[].ticketCode:string",
+        "body:jeecgOrderTicketList[].updateBy:string",
+        "body:jeecgOrderTicketList[].updateTime:string",
+        "body:orderCode:string",
+        "body:orderDate:string",
+        "body:orderMoney:number",
+        "body:updateBy:string",
+        "body:updateTime:string"
+      ],
+      "review": "JeecgOrderMainPage 与两个子 DTO：30 个叶子字段；日期按 JSON 字符串绑定，金额为 number。"
+    }
+  ]
+}
