@@ -10,7 +10,7 @@ def arr(items): return {'type':'array','items':items}
 evidence=obj({'file':S,'start_line':{'type':'integer','minimum':1},'end_line':{'type':'integer','minimum':1}})
 ev=arr(evidence)
 field=obj({'name':S,'location':{'enum':['body','query','path','form','header']},'type':{'type':['string','null']},'note':S,'evidence':ev},['name','location','type'])
-api=obj({'api_id':S,'method':{'enum':['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS','TRACE']},'path':S,'file':S,'line':{'type':'integer','minimum':1},'request_fields':arr(field),'unresolved':strings})
+api=obj({'api_id':S,'method':{'enum':['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS','TRACE','ANY']},'path':S,'file':S,'line':{'type':'integer','minimum':1},'request_fields':arr(field),'unresolved':strings})
 operation=obj({'id':S,'description':S,'evidence':ev},['description','evidence'])
 # Optional bindings remain descriptive: the approved baseline does not define a fixed mapping language.
 bindings=arr({'type':'object'})

@@ -47,7 +47,8 @@
                   "DELETE",
                   "HEAD",
                   "OPTIONS",
-                  "TRACE"
+                  "TRACE",
+                  "ANY"
                 ]
               },
               "path": {

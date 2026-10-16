@@ -40,6 +40,7 @@ class Job(Base):
     kind: Mapped[str] = mapped_column(String, default='agent_probe')
     state: Mapped[str] = mapped_column(String, default='queued')
     file: Mapped[str] = mapped_column(String)
+    options: Mapped[dict] = mapped_column(JSON, default=dict)
     worker: Mapped[str | None] = mapped_column(String, nullable=True)
     heartbeat: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -58,3 +59,16 @@ class Worker(Base):
     boot: Mapped[str] = mapped_column(String)
     seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     model: Mapped[dict] = mapped_column(JSON, default=dict)
+
+class Stage1State(Base):
+    __tablename__ = 'stage1_states'
+    job_id: Mapped[str] = mapped_column(ForeignKey('jobs.id'), primary_key=True)
+    extractor_version: Mapped[str] = mapped_column(String)
+    scan: Mapped[dict] = mapped_column(JSON, default=dict)
+
+class Stage1Api(Base):
+    __tablename__ = 'stage1_apis'
+    job_id: Mapped[str] = mapped_column(ForeignKey('jobs.id'), primary_key=True)
+    api_id: Mapped[str] = mapped_column(String, primary_key=True)
+    record: Mapped[dict] = mapped_column(JSON)
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)

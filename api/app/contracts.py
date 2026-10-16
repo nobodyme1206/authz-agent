@@ -11,6 +11,7 @@ def validate_result(result, source_root=None, related=None):
     schema = json.loads((ROOT / f'stage-{stage}.schema.json').read_text())
     Draft202012Validator(schema).validate(result)
     data = result['data']
+    positions = {}
     if related and related.get('source_revision') and result['source_revision'] != related['source_revision']:
         raise ValueError('source_revision_mismatch')
     if stage == 1:
@@ -41,11 +42,11 @@ def validate_result(result, source_root=None, related=None):
             if {'file', 'start_line', 'end_line'} <= node.keys():
                 if node['end_line'] < node['start_line']: raise ValueError('invalid_evidence_range')
                 if Path(node['file']).is_absolute() or '..' in Path(node['file']).parts or '\\' in node['file']: raise ValueError('invalid_evidence_path')
-                if source_root: read_evidence(source_root, node['file'], node['start_line'], node['end_line'])
+                if source_root: read_evidence(source_root, node['file'], node['start_line'], node['end_line'], positions)
             for v in node.values(): walk(v)
         elif isinstance(node, list):
             for v in node: walk(v)
     walk(data)
     if stage == 1 and source_root:
-        for a in data['apis']: read_evidence(source_root, a['file'], a['line'], a['line'])
+        for a in data['apis']: read_evidence(source_root, a['file'], a['line'], a['line'], positions)
     return result

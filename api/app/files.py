@@ -20,11 +20,15 @@ def safe_path(root: Path, relative: str, directory=False):
     if not directory and not p.is_file(): raise HTTPException(422, 'not_a_file')
     return p
 
-def read_evidence(root, relative, start, end):
+def read_evidence(root, relative, start, end, cache=None):
     if start < 1 or end < start or end - start >= 300: raise HTTPException(422, 'invalid_line_range')
     p = safe_path(root, relative)
     if p.stat().st_size > MAX_FILE: raise HTTPException(422, 'file_too_large')
-    try: lines = p.read_text(encoding='utf-8').splitlines()
+    try:
+        if cache is not None and p in cache: lines = cache[p]
+        else:
+            lines = p.read_text(encoding='utf-8').splitlines()
+            if cache is not None: cache[p] = lines
     except UnicodeError: raise HTTPException(422, 'not_utf8_text')
     if end > len(lines): raise HTTPException(422, 'line_out_of_range')
     content = '\n'.join(lines[start-1:end])
