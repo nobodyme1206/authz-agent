@@ -80,3 +80,8 @@ test('a model type refinement does not erase dynamic-key uncertainty',async()=>{
  const out=mergeDelta(entry,{fields:[{name:'options',location:'body',type:'object',evidence:[e]}],resolved:[...entry.api.unresolved],unresolved:[]},[e],index);
  assert.equal(out.detail.enrichment_accepted,1);assert.equal(out.api.request_fields[0].type,'object');assert.deepEqual(out.api.unresolved,entry.api.unresolved);
 });
+
+test('Comparable is a standard behaviour interface, not a missing DTO property parent',async()=>{
+ const {entries}=await fixture('package p; @RestController class C { @GetMapping("/x") void run(Item q){} } @Data class Item implements Comparable<Item>{private String id; public int compareTo(Item x){return 0;} }');
+ const api=entries[0];assert.ok(!api.api.unresolved.some(u=>u.includes('Comparable')));assert.deepEqual(api.api.request_fields.map(f=>f.name),['id']);
+});

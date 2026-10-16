@@ -72,3 +72,12 @@ class Stage1Api(Base):
     api_id: Mapped[str] = mapped_column(String, primary_key=True)
     record: Mapped[dict] = mapped_column(JSON)
     detail: Mapped[dict] = mapped_column(JSON, default=dict)
+
+class Stage2State(Base):
+    __tablename__ = 'stage2_states'
+    job_id: Mapped[str] = mapped_column(ForeignKey('jobs.id'), primary_key=True)
+    analyzer_version: Mapped[str] = mapped_column(String)
+    source_input: Mapped[dict] = mapped_column(JSON)
+    input_hash: Mapped[str] = mapped_column(String)
+    data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)

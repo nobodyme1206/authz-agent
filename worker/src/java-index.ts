@@ -9,7 +9,7 @@ export type Token = { image: string; startOffset: number; endOffset: number; sta
 export type Evidence = {file:string;start_line:number;end_line:number};
 export type Annotation = {name:string;values:Record<string,Token[]>;node:Node};
 export type Variable = {name:string;type:string;annotations:Annotation[];node:Node;modifiers:string[];initializer:Token[]};
-export type Method = {name:string;params:Variable[];annotations:Annotation[];node:Node;body:Token[];line:number;end:number;signature:string;owner:JavaClass};
+export type Method = {name:string;returnType?:string;params:Variable[];annotations:Annotation[];node:Node;body:Token[];line:number;end:number;signature:string;owner:JavaClass};
 export type JavaClass = {name:string;fqn:string;file:string;line:number;pkg:string;imports:string[];annotations:Annotation[];fields:Variable[];methods:Method[];parents:string[];typeParams:string[];modifiers:string[]};
 export type ScanFile = {file:string;status:string;classes:number;reason?:string};
 export type JavaIndex = {classes:JavaClass[];files:ScanFile[];diagnostics:string[];sources:Map<string,string>;resolve:(type:string,owner:JavaClass)=>JavaClass|undefined};
@@ -99,7 +99,7 @@ export function parseSource(source:string,file:string):JavaClass[]{
        if(text(regular).includes('...'))v.type+='[]';return v;
       });
       const header=first(method,'methodHeader');const ts=tokens(header);
-      const m:Method={name:declarator.children.Identifier[0].image,params,annotations:annotations(method.children.methodModifier||method.children.interfaceMethodModifier||[]),node:method,body:tokens(first(method,'methodBody')),line:ts[0]?.startLine||1,end:tokens(method).at(-1)?.endLine||1,signature:'',owner:cls};
+      const m:Method={name:declarator.children.Identifier[0].image,returnType:text(first(header,'result')),params,annotations:annotations(method.children.methodModifier||method.children.interfaceMethodModifier||[]),node:method,body:tokens(first(method,'methodBody')),line:ts[0]?.startLine||1,end:tokens(method).at(-1)?.endLine||1,signature:'',owner:cls};
       m.signature=m.name+'('+params.map(p=>p.type).join(',')+')';cls.methods.push(m);
      }
     }

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { annotation, argumentsOf, bare, ev, first, nodes, split, text, tokens, type Annotation, type Evidence, type JavaClass, type JavaIndex, type Method, type Token, type Variable } from './java-index.ts';
 
-export const EXTRACTOR_VERSION='spring-java-1.0.4';
+export const EXTRACTOR_VERSION='spring-java-1.0.5';
 export type RequestField={name:string;location:'body'|'query'|'path'|'form'|'header';type:string|null;note?:string;evidence?:Evidence[]};
 export type Api={api_id:string;method:string;path:string;file:string;line:number;request_fields:RequestField[];unresolved:string[]};
 export type ApiEntry={api:Api;detail:{identity:string[];handler:string;controller_file:string;conditions:Record<string,string>;evidence_files:string[];enrichment_status:string;[key:string]:unknown}};
@@ -112,8 +112,8 @@ export function extractApis(index:JavaIndex,revision:string,include:string[]=[])
 }
 
 type Binding={locations:RequestField['location'][];prefix:string;type:string;scalar?:string};
-type Call={receiver:string;name:string;args:Token[][];line:number;start:number;end:number};
-function calls(ts:Token[]):Call[]{
+export type Call={receiver:string;name:string;args:Token[][];line:number;start:number;end:number};
+export function calls(ts:Token[]):Call[]{
  const result:Call[]=[];
  for(let i=0;i<ts.length-1;i++){
   if(ts[i+1]?.image!=='('||!/^[A-Za-z_$][\w$]*$/.test(ts[i].image)||['if','for','while','switch','catch','synchronized','new','return','throw'].includes(ts[i].image))continue;
@@ -157,7 +157,7 @@ export function extractFields(api:Api,entry:Method,index:JavaIndex,evidenceFiles
   const genericBindings=new Map(target.typeParams.map((p,i)=>[p,argumentsOf(type)[i]||p]));
   function expandClass(c:JavaClass,chain=new Set<string>()){
    if(chain.has(c.fqn))return;chain.add(c.fqn);
-   for(const parentType of c.parents){const parent=index.resolve(parentType,c);if(parent)expandClass(parent,chain);else if(!['Object','Serializable'].includes(bare(parentType)))unresolved.add('无法解析父类型：'+parentType);}
+   for(const parentType of c.parents){const parent=index.resolve(parentType,c);if(parent)expandClass(parent,chain);else if(!['Object','Serializable','Comparable','Cloneable'].includes(bare(parentType)))unresolved.add('无法解析父类型：'+parentType);}
    for(const f of c.fields){
     if(f.modifiers.includes('static')||f.modifiers.includes('transient'))continue;
     const ignore=annotation(f.annotations,'JsonIgnore');

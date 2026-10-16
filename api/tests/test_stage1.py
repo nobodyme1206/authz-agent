@@ -95,5 +95,5 @@ def test_explicit_migration_preserves_batch_one_rows(tmp_path):
     with old.connect() as c:
         row=c.execute(text("SELECT state,result,options FROM jobs WHERE id='old'")).one()
         assert row[0]=='completed' and json.loads(row[1])['answer']=='kept' and json.loads(row[2])=={}
-        assert c.execute(text('SELECT count(*) FROM schema_migrations')).scalar()==1
+        assert set(c.execute(text('SELECT version FROM schema_migrations')).scalars())=={'0002_stage1','0003_stage2'}
     assert 'stage1_apis' in inspect(old).get_table_names()

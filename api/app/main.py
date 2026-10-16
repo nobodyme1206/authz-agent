@@ -7,10 +7,10 @@ from fastapi import FastAPI, Depends, HTTPException, Header, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, text
-from .db import Base, engine, Session, Project, Snapshot, Job, Event, Worker, Stage1State, Stage1Api, now, secret
+from .db import Base, engine, Session, Project, Snapshot, Job, Event, Worker, Stage1State, Stage1Api, Stage2State, now, secret
 from .files import safe_path, snapshot_tree, read_evidence
 from .migrations import upgrade
-from . import stage1
+from . import stage1, stage2
 
 SOURCES = Path(os.getenv('SOURCE_ROOT', '/sources'))
 SNAPSHOTS = Path(os.getenv('SNAPSHOT_ROOT', '/snapshots'))
@@ -43,9 +43,9 @@ def event(db, job, kind, data=None):
 
 def public(obj):
     excluded = {'worker'}
-    if isinstance(obj, Job) and obj.kind == 'stage1_extract': excluded.add('result')
+    if isinstance(obj, Job) and obj.kind in ('stage1_extract', 'stage2_analyze'): excluded.add('result')
     result = {c.name: getattr(obj, c.name) for c in obj.__table__.columns if c.name not in excluded}
-    if isinstance(obj, Job) and obj.kind == 'stage1_extract':
+    if isinstance(obj, Job) and obj.kind in ('stage1_extract', 'stage2_analyze'):
         result['result'] = None  # Large stage results use the dedicated result endpoint.
     return result
 
@@ -56,6 +56,7 @@ def stale(db):
         j.state = 'cancelled' if j.state == 'cancel_requested' else 'failed'
         j.error = 'worker_interrupted'
         if j.kind == 'stage1_extract': j.result = stage1.envelope(db, j, True)
+        elif j.kind == 'stage2_analyze': j.result = stage2.envelope(db, j, True)
         event(db, j, 'interrupted', {'code': 'worker_interrupted'})
 
 @asynccontextmanager
@@ -65,7 +66,7 @@ async def lifespan(app):
     upgrade(engine)
     yield
 
-app = FastAPI(title='Authz Agent · Stage 1', lifespan=lifespan)
+app = FastAPI(title='Authz Agent · Stage 2', lifespan=lifespan)
 
 @app.exception_handler(Exception)
 async def safe_error(request, exc):
@@ -77,7 +78,7 @@ class ProjectInput(BaseModel):
 class ProbeInput(BaseModel):
     snapshot_id: str
     file: str | None = Field(default=None, min_length=1, max_length=500)
-    kind: Literal['agent_probe', 'stage1_extract'] = 'agent_probe'
+    kind: Literal['agent_probe', 'stage1_extract', 'stage2_analyze'] = 'agent_probe'
     options: dict = Field(default_factory=dict)
 class BootInput(BaseModel):
     key: str = 'primary'
@@ -93,6 +94,10 @@ class Finish(WorkerInput):
     state: Literal['completed','failed','cancelled']
     result: dict | None = None
     error: str | None = Field(default=None, max_length=200)
+class Stage2Checkpoint(WorkerInput):
+    data: dict | None = None
+    detail: dict
+
 class Checkpoint(WorkerInput):
     entries: list[dict] = Field(default_factory=list)
     scan: dict | None = None
@@ -103,7 +108,7 @@ def health(db=Depends(get_db)):
     stale(db); db.commit()
     w = db.get(Worker, 'primary')
     online = bool(w and (now() - (w.seen.replace(tzinfo=now().tzinfo) if w.seen.tzinfo is None else w.seen)).total_seconds() < 45)
-    return {'api':'ok','database':'ok','worker':'online' if online else 'offline', 'model': w.model if w else {'configured':False}, 'stages': {str(i):'implemented' if i == 1 else 'not_implemented' for i in range(1,5)}}
+    return {'api':'ok','database':'ok','worker':'online' if online else 'offline', 'model': w.model if w else {'configured':False}, 'stages': {str(i):'implemented' if i in (1,2) else 'not_implemented' for i in range(1,5)}}
 
 @app.get('/api/sources')
 def sources():
@@ -167,9 +172,12 @@ def evidence(sid:str,file:str,start_line:int=1,end_line:int=20,db=Depends(get_db
 def create_job(body:ProbeInput,db=Depends(get_db)):
     snap=get(db,Snapshot,body.snapshot_id)
     options = {}
+    frozen = None
     if body.kind == 'agent_probe':
         if not body.file: raise HTTPException(422, 'probe_file_required')
         read_evidence(SNAPSHOTS/snap.id,body.file,1,1)
+    elif body.kind == 'stage2_analyze':
+        options, frozen = stage2.prepare(db, snap.id, body.options)
     else:
         if set(body.options) - {'include_paths','enrich','base_run_id'}: raise HTTPException(422,'invalid_stage1_options')
         paths = body.options.get('include_paths', [])
@@ -184,7 +192,10 @@ def create_job(body:ProbeInput,db=Depends(get_db)):
                 raise HTTPException(409,'incompatible_base_run')
             options['base_run_id'] = base_id
     j=Job(id=uid('run'),snapshot_id=snap.id,file=body.file or '',kind=body.kind,options=options,state='queued')
-    db.add(j);db.flush();event(db,j,'queued',{'kind':body.kind})
+    db.add(j);db.flush()
+    if frozen is not None:
+        db.add(Stage2State(job_id=j.id,analyzer_version=stage2.ANALYZER_VERSION,source_input=frozen,input_hash=options['input_hash'],detail={}))
+    event(db,j,'queued',{'kind':body.kind})
     db.commit();return public(j)
 
 @app.get('/api/jobs')
@@ -202,6 +213,9 @@ def job(jid:str,db=Depends(get_db)):
     if j.kind == 'stage1_extract':
         state=db.get(Stage1State,j.id)
         response['analysis']=state.scan if state else None
+    elif j.kind == 'stage2_analyze':
+        state=db.get(Stage2State,j.id)
+        response['analysis']={k:v for k,v in state.detail.items() if k not in ('graph','candidates','observed','source_context')} if state else None
     return response
 
 @app.post('/api/jobs/{jid}/cancel')
@@ -210,14 +224,15 @@ def cancel(jid:str,db=Depends(get_db)):
     if j.state=='queued':
         j.state='cancelled';event(db,j,'cancelled')
         if j.kind=='stage1_extract': j.result=stage1.envelope(db,j,True)
+        elif j.kind=='stage2_analyze': j.result=stage2.envelope(db,j,True)
     elif j.state=='running': j.state='cancel_requested';event(db,j,'cancel_requested')
     db.commit();return public(j)
 
 @app.get('/api/jobs/{jid}/result')
 def result(jid:str,db=Depends(get_db)):
     j=get(db,Job,jid)
-    if j.kind == 'stage1_extract' and j.result is None:
-        checkpoint=stage1.envelope(db,j,True)
+    if j.kind in ('stage1_extract','stage2_analyze') and j.result is None:
+        checkpoint=(stage1 if j.kind=='stage1_extract' else stage2).envelope(db,j,True)
         if checkpoint is not None: return checkpoint
     if j.result is None: raise HTTPException(409,'result_not_available')
     return j.result
@@ -266,6 +281,7 @@ def worker_start(body:BootInput,db=Depends(get_db)):
         for j in db.scalars(select(Job).where(Job.worker==w.boot,Job.state.in_(['running','cancel_requested'])).with_for_update()).all():
             j.state='cancelled' if j.state=='cancel_requested' else 'failed';j.error='worker_interrupted';event(db,j,'interrupted')
             if j.kind=='stage1_extract': j.result=stage1.envelope(db,j,True)
+            elif j.kind=='stage2_analyze': j.result=stage2.envelope(db,j,True)
     if not w: w=Worker(key=body.key,boot=body.boot);db.add(w)
     w.boot=body.boot;w.seen=now();w.model=body.model
     db.commit();return {'ok':True}
@@ -324,16 +340,43 @@ def finish(jid:str,body:Finish,db=Depends(get_db)):
         if final_state=='completed' and (not state or not state.scan.get('index_complete')):
             raise HTTPException(422,'stage1_index_not_complete')
         j.result=stage1.envelope(db,j,final_state!='completed')
+    elif j.kind=='stage2_analyze':
+        j.result=stage2.envelope(db,j,final_state!='completed')
+        if final_state=='completed' and j.result is None: raise HTTPException(422,'stage2_result_required')
     elif final_state=='completed':
         if not body.result or body.result.get('kind')!='agent_probe' or not body.result.get('reads'): raise HTTPException(422,'probe_requires_observed_read')
         for e in body.result['reads']:
             read_evidence(SNAPSHOTS/j.snapshot_id,e['file'],e['start_line'],e['end_line'])
         if len(json.dumps(body.result))>65536: raise HTTPException(422,'result_too_large')
     j.state=final_state;j.error=body.error if final_state!='completed' else None
-    if j.kind!='stage1_extract': j.result=body.result if final_state=='completed' else None
+    if j.kind=='agent_probe': j.result=body.result if final_state=='completed' else None
     event(db,j,final_state,{'code':j.error} if j.error else {})
     if j.result:
         directory=RUNS/j.id;directory.mkdir(parents=True,exist_ok=True)
-        name='stage1-result' if j.kind=='stage1_extract' else 'probe-result'
+        name='stage1-result' if j.kind=='stage1_extract' else 'stage2-result' if j.kind=='stage2_analyze' else 'probe-result'
         temp=directory/(name+'.tmp');temp.write_text(json.dumps(j.result,ensure_ascii=False,indent=2));temp.replace(directory/(name+'.json'))
     db.commit();return public(j)
+
+
+@app.get('/api/jobs/{jid}/analysis')
+def analysis(jid:str,db=Depends(get_db)):
+    j=get(db,Job,jid)
+    if j.kind!='stage2_analyze': raise HTTPException(422,'not_stage2_job')
+    state=get(db,Stage2State,jid)
+    return {'input_hash':state.input_hash,'source':state.source_input,'detail':state.detail}
+
+@app.post('/internal/jobs/{jid}/stage2/context',dependencies=[Depends(internal)])
+def stage2_context(jid:str,body:WorkerInput,db=Depends(get_db)):
+    j=owned(db,jid,body)
+    if j.kind!='stage2_analyze': raise HTTPException(422,'not_stage2_job')
+    state=get(db,Stage2State,jid)
+    base=db.get(Stage2State,j.options.get('base_run_id',''))
+    db.commit()
+    return {'source':state.source_input,'input_hash':state.input_hash,'base':{'data':base.data,'detail':base.detail} if base else None}
+
+@app.post('/internal/jobs/{jid}/stage2/checkpoints',dependencies=[Depends(internal)])
+def stage2_checkpoint(jid:str,body:Stage2Checkpoint,db=Depends(get_db)):
+    j=owned(db,jid,body)
+    stage2.save_checkpoint(db,j,body.data,body.detail,SNAPSHOTS)
+    event(db,j,'stage2_checkpoint',{'phase':body.detail.get('phase'),'checks':len((body.data or {}).get('checks',[]))})
+    db.commit();return {'ok':True}
