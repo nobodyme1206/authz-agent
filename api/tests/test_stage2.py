@@ -32,13 +32,15 @@ def test_stage2_freezes_input_and_result_contract(client):
         row=db.get(Stage1Api,(j['id'],e['api']['api_id']));changed=copy.deepcopy(row.record);changed['request_fields']=[];row.record=changed;db.commit()
     read=client.post('/internal/jobs/'+new['id']+'/stage2/context',headers=H,json={'boot':'stage-boot'}).json()
     assert read['source']==ctx['source'] and read['input_hash']==ctx['input_hash']
-    p=payload(e,ctx);assert client.post('/internal/jobs/'+new['id']+'/stage2/checkpoints',headers=H,json=p).status_code==200
+    p=payload(e,ctx);p['detail']['agent_observed']=p['detail']['observed']
+    assert client.post('/internal/jobs/'+new['id']+'/stage2/checkpoints',headers=H,json=p).status_code==200
     assert client.post('/internal/jobs/'+new['id']+'/finish',headers=H,json={'boot':'stage-boot','state':'completed'}).status_code==200
     out=client.get('/api/jobs/'+new['id']+'/result').json()
     assert out['stage']==2 and out['schema_version']=='0.4' and out['status']=='partial'
     assert out['data']['checks'][0]['fields']==['body:id']
     assert client.get('/api/jobs/'+new['id']+'/analysis').json()['input_hash']==ctx['input_hash']
     assert client.get('/api/jobs/'+new['id']).json()['result'] is None
+    assert 'agent_observed' not in client.get('/api/jobs/'+new['id']).json()['analysis']
     invalid=client.post('/api/jobs',json={'kind':'stage2_analyze','snapshot_id':s['id'],'options':{'stage1_run_id':j['id'],'api_id':e['api']['api_id'],'base_run_id':new['id']}})
     assert invalid.status_code==409  # source changed: hash prevents accidental reuse
 
@@ -49,6 +51,7 @@ def test_stage2_rejects_bad_fields_evidence_versions_and_late_writes(client):
     a=copy.deepcopy(p);a['data']['checks'][0]['fields']=['body:made_up'];cases.append(a)
     a=copy.deepcopy(p);a['data']['checks'][0]['evidence'][0]['file']='../secret';cases.append(a)
     a=copy.deepcopy(p);a['detail']['observed']=[];cases.append(a)
+    a=copy.deepcopy(p);a['detail']['agent_observed']=[];cases.append(a)
     a=copy.deepcopy(p);a['detail']['input_hash']='other';cases.append(a)
     a=copy.deepcopy(p);a['data']['unresolved']=[];cases.append(a)
     a=copy.deepcopy(p);a['data']['checks'][0]['evidence']=[];cases.append(a)
@@ -83,3 +86,10 @@ def test_evidence_proof_supports_contiguous_reads_but_not_gaps():
     ev={'file':'A.java','start_line':79,'end_line':102}
     assert was_read(ev,[{'file':'A.java','start_line':1,'end_line':100},{'file':'A.java','start_line':99,'end_line':112}])
     assert not was_read(ev,[{'file':'A.java','start_line':1,'end_line':90},{'file':'A.java','start_line':92,'end_line':112}])
+
+
+def test_task_kind_filter_preserves_source_discovery(client):
+    s,j,e=source(client);new,_=start(client,s,j,e)
+    assert [r['id'] for r in client.get('/api/jobs?kind=stage1_extract').json()]==[j['id']]
+    assert [r['id'] for r in client.get('/api/jobs?kind=stage2_analyze').json()]==[new['id']]
+    assert client.get('/api/jobs?kind=made_up').status_code==422

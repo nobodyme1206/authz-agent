@@ -75,7 +75,7 @@ def save_checkpoint(db, job, data, detail, root):
                    'run_id': job.id, 'stage': 2, 'status': 'partial', 'data': data}
         try:
             validate_result(wrapped, Path(root) / job.snapshot_id, {'api_ids': [api['api_id']], 'fields': [f['location'] + ':' + f['name'] for f in api['request_fields']], 'source_revision': snap.revision})
-            observed = detail.get('observed', [])
+            observed = detail.get('agent_observed', detail.get('observed', [])) if detail.get('analysis_complete') else detail.get('observed', [])
             for item in data['checks'] + data.get('operations', []) + ([data['operation']] if 'operation' in data else []):
                 if not item['evidence']:
                     raise ValueError('empty_evidence')

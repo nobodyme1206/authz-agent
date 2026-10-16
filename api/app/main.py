@@ -199,10 +199,11 @@ def create_job(body:ProbeInput,db=Depends(get_db)):
     db.commit();return public(j)
 
 @app.get('/api/jobs')
-def jobs(project_id:str|None=None,db=Depends(get_db)):
+def jobs(project_id:str|None=None,kind:Literal['agent_probe','stage1_extract','stage2_analyze']|None=None,db=Depends(get_db)):
     stale(db);db.commit()
     q=select(Job).join(Snapshot).order_by(Job.created_at.desc()).limit(100)
     if project_id: q=q.where(Snapshot.project_id==project_id)
+    if kind: q=q.where(Job.kind==kind)
     return [public(j) for j in db.scalars(q)]
 
 @app.get('/api/jobs/{jid}')
@@ -215,7 +216,8 @@ def job(jid:str,db=Depends(get_db)):
         response['analysis']=state.scan if state else None
     elif j.kind == 'stage2_analyze':
         state=db.get(Stage2State,j.id)
-        response['analysis']={k:v for k,v in state.detail.items() if k not in ('graph','candidates','observed','source_context')} if state else None
+        progress_keys={'analyzer_version','input_hash','phase','analysis_complete','limits','usage','stats','elapsed_seconds','turns','tool_calls','usage_available','error','tool_mode','resume'}
+        response['analysis']={k:v for k,v in state.detail.items() if k in progress_keys} if state else None
     return response
 
 @app.post('/api/jobs/{jid}/cancel')
