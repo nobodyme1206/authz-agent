@@ -1,0 +1,16 @@
+{
+  "source_revision": "sha256:75acb246045e195624021711446fc99b3b51ea3f1561cf89fdfc468ee45355a6",
+  "review_policy": "人工预先固定的语义核对要点。不能作为 Agent 输入。按含义与源码核对，不机械匹配模型措辞。",
+  "samples": [
+    {"method":"POST","path":"/sys/tenant/changeOwenUserTenant","required":["目标 userId 与 tenantId 的成员关系及失败抛异常","tenant.createBy 设置为目标用户 username","数据库原 createBy 对应用户租户关系被更新","Shiro 全局认证与目标成员关系不同"],"forbidden":["把目标成员检查写成请求者 owner 检查","把存在的租户隔离全局开关视为已开启"]},
+    {"method":"POST","path":"/sys/sysDepartRole/deptRoleUserAdd","required":["当前主体 system:depart:role:userAdd 权限及 Shiro 注解集成","新增角色关系与删除角色关系分别说明","newRoleId 和 oldRoleId 都来自客户端","旧角色列表不是数据库旧值"],"forbidden":["把上游列表部门过滤当作本接口有效检查","声称保存接口接收 departId"]},
+    {"method":"POST","path":"/sys/role/add","required":["system:role:add 权限","SysRole 保存","createTime/updateTime 被服务端覆盖","OPEN_SYSTEM_TENANT_CONTROL 当前为 false"],"forbidden":["将关闭的分支当作实际租户保护","将时间生成当作权限检查"]},
+    {"method":"PUT","path":"/sys/role/edit","required":["system:role:edit 权限","数据库旧角色先按请求 id 查询","更新请求 role","租户比较与 admin 例外存在于开关控制分支但当前不生效"],"forbidden":["声称当前已强制校验租户相等","用请求 tenantId 替代数据库 sysrole.tenantId"]},
+    {"method":"GET","path":"/sys/role/listByTenant","required":["角色查询与普通分页","role.tenantId 的服务端覆盖受 false 开关控制","核查 QueryGenerator 与实体/表隔离范围"],"forbidden":["声称当前无条件限制到登录租户"]},
+    {"method":"GET","path":"/sys/role/list","required":["system:role:list 权限","Service 到 SysRoleMapper.listAllSysRole 与 XML","InterceptorIgnore tenantLine=true","角色名称和编码等为请求筛选"],"forbidden":["把请求筛选当作 actor 资源范围授权","声称 Mapper 已自动增加租户限制"]},
+    {"method":"GET","path":"/sys/tenant/list","required":["system:tenant:list 权限","PermissionDataAspect 查询并安装数据规则","QueryGenerator 消费规则后进入查询","具体规则依赖数据库配置，静态无法确定时保留未知"],"forbidden":["仅凭 PermissionData 注解认定具体 owner/租户过滤","把日期过滤当成授权"]},
+    {"method":"GET","path":"/sys/sysDepart/queryMyDeptTreeList","required":["当前登录用户身份和 departIds","userIdentity 条件与空 departIds 行为","Service 查询负责部门树的范围"],"forbidden":["把负责部门 id 写成客户端输入","推广为其他 API 的全局授权要求"]},
+    {"method":"DELETE","path":"/sys/tenant/exitUserTenant","required":["当前主体 id 的租户成员检查","当前主体密码验证及失败提前返回","退出租户及 owner 相关分支","区分 body SysTenant 与主体身份"],"forbidden":["将密码验证写成 owner 身份检查","忽略 Service 中的退出限制"]},
+    {"method":"GET","path":"/sys/randomImage/{key}","required":["Shiro 匿名路由例外","验证码生成/缓存及图片返回","key 是请求字段，不能据其命名虚构用户资源"],"forbidden":["制造 owner、管理员权限或登录必需条件"]}
+  ]
+}

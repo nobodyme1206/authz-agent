@@ -1,5 +1,6 @@
 # 接口与开发约定
 
+任务列表可使用 `GET /api/jobs?kind=stage1_extract`（同样支持 agent_probe、stage2_analyze）。类型筛选发生在最近 100 项截取之前。
 Web 通过 `/api/*` 同源代理访问 FastAPI；不代理 `/internal/*`。跨站 Origin 的写请求被 Web 拒绝。API 容器本身没有宿主机公开端口。
 
 | 方法 | 路径 | 用途 |
@@ -59,3 +60,11 @@ Worker 内部接口以 `/internal` 开头，必须携带从只读 secret 读取�
 - `/internal/jobs/{id}/stage1/checkpoints` 分批保存成果；`/internal/jobs/{id}/stage1/base` 读取已授权的兼容结果，均校验 Worker token 与任务所有权。
 
 具体参数、预算、状态和兼容性见 [Stage 1 文档](stage1.md)。`schema_version: "0.4"` 保持不变，HTTP 方法枚举兼容新增 `ANY`；旧结果继续有效。
+
+## Stage 2 扩展（批次三）
+
+`POST /api/jobs` 新增 `kind: stage2_analyze`，options 必须指定 stage1_run_id 与 api_id。来源必须是同一快照的终止 Stage 1 任务且包含有效 API，允许来源为 partial。任务创建即复制来源内容及哈希；不向模型开放任务元数据控制。
+
+`GET /api/jobs/{id}/analysis` 返回固定来源与分析详情；result 返回单 API 的 v0.4 Stage 2 数据。取消、失败或重启后，有有效检查点则可以读取 partial；没有有效成果仍返回 409。
+
+内部 `/jobs/{id}/stage2/context` 与 `/jobs/{id}/stage2/checkpoints` 复用 Worker token、启动身份和任务所有权校验。追加的 0003_stage2 迁移保留历史数据。接口预算与准确性边界见 [Stage 2 文档](stage2.md)。

@@ -1,6 +1,6 @@
 # Authz Agent
 
-以源码证据驱动的授权分析工作台。已实现 Docker 运行基础、源码快照、任务链路、Pi 接入，以及 **Stage 1：JeecgBoot / Java Spring MVC 的 API 与请求字段提取**。Stage 2—4 授权分析尚未实现。
+以源码证据驱动的授权分析工作台。已实现 Docker 运行基础、源码快照、任务链路、Pi 接入，以及 **Stage 1：JeecgBoot / Java Spring MVC 的 API 与请求字段提取**，以及 **Stage 2：实际授权检查与资源操作分析**。Stage 3—4 尚未实现。
 
 ## 技术组成
 
@@ -58,7 +58,7 @@ docker compose up -d --force-recreate api
 
 ## 任务与结果
 
-- 任务类型为 `agent_probe` 和 `stage1_extract`；只有后者产生 v0.4 Stage 1 成果，二者均不判断漏洞。
+- 任务类型为 `agent_probe`、`stage1_extract` 和 `stage2_analyze`；后两者分别产生 v0.4 Stage 1、Stage 2 成果，均不判断漏洞。
 - 内部状态：`queued`、`running`、`cancel_requested`、`completed`、`failed`、`cancelled`。
 - Worker 轮询 PostgreSQL 队列，领取和写事件在数据库事务内完成；单 Worker 顺序执行。
 - Worker 每次启动使用新的身份。重启会将旧身份的运行任务标记为 `worker_interrupted`，不自动重跑模型请求。无心跳超过 90 秒的运行任务也会标记中断。
@@ -87,9 +87,9 @@ Worker 测试中的本地协议 fixture 用于验证 Pi SDK 的真实工具执�
 
 ## 当前限制
 
-- Stage 2—4 算法和复杂传播图留待后续批次。Stage 1 的框架支持与追踪边界见 `docs/stage1.md`。
+- Stage 3—4 算法和复杂传播图留待后续批次。Stage 1 的框架支持与追踪边界见 `docs/stage1.md`。
 - 这是本机单用户工作空间，不具有面向公网的身份认证和多用户隔离。
-- 启动时执行显式增量迁移 `0002_stage1`，为旧任务增加 options 并创建 Stage 1 表，保留原有数据。后续结构变更继续新增迁移，不能重建研究数据。
+- 启动时执行显式增量迁移 `0002_stage1`、`0003_stage2`，为旧任务增加 options 并创建 Stage 1 表，保留原有数据。后续结构变更继续新增迁移，不能重建研究数据。
 - 快照采用同步接口创建；源码持续变化会导致失败，应该在固定源码上重试。
 - 源码文件列表按路径前缀过滤，最多返回 200 项；页面默认 100 项。
 - 本批不构建或运行被测应用，不发送漏洞利用请求。
@@ -112,3 +112,18 @@ API、字段及未解析项按任务和版本保存。任务执行完成不代�
 默认最多补全 20 个 API，每 API 6 轮模型回复 / 12 次工具调用 / 120 秒，单次最多输出 4,096 Token；累计预算 100,000 Token，任务最长 30 分钟。达到 Token 预算后不再开启新调用，在途请求可造成一次请求的预算超出；用量不可获得时停止继续补全。配置名见 `.env.example`。
 
 接口和实现边界见 `docs/stage1.md`；真实源码、模型效果和验收限制见 `docs/acceptance-batch2.md`。
+
+## Stage 2 使用与验收
+
+选择项目的“实际授权”，从终止的 Stage 1 任务中选择 1—10 个 API。每个 API 创建独立任务，固定入口、字段和源码版本。Pi 通过有界源码工具分析实际操作、权限检查、条件与不确定性，提供证据跳转、下载及检查点继续。
+
+每 API 默认 60,000 Token、12 轮、30 次工具调用，模型分析 180 秒、任务最长 300 秒。批量提交分别计费；没有自动收费重试。缺少模型时不会生成模拟授权分析。
+
+```sh
+# 此命令会真实调用模型；只运行指定的一个验收样本：
+python3 scripts/stage2-smoke.py --stage1-run <run_id> --sample 1
+# 明确运行全部十个样本：
+python3 scripts/stage2-smoke.py --stage1-run <run_id> --all
+```
+
+实现与限制见 [Stage 2 说明](docs/stage2.md)，衔接核查见 [Stage 1 衔接记录](docs/stage1-handoff.md)，真实模型、测试及剩余问题见 [批次三验收记录](docs/acceptance-batch3.md)。Stage 2 只提取实际实现，checks 为空或结果 partial 都不能推导存在漏洞。

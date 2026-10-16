@@ -15,7 +15,7 @@ export default function StageOne({projectId,snapshotId}:{projectId:string;snapsh
  const [paths,setPaths]=useState('jeecg-boot'),[enrich,setEnrich]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [q,setQ]=useState(''),[method,setMethod]=useState(''),[unresolved,setUnresolved]=useState(false),[page,setPage]=useState(1),[apis,setApis]=useState<Api[]>([]),[total,setTotal]=useState(0),[selected,setSelected]=useState<{api:Api;detail:Record<string,unknown>}|null>(null);
  const [events,setEvents]=useState<{id:string;type:string;data:unknown}[]>([]),[code,setCode]=useState<(Evidence&{content:string})|null>(null),[fileFilter,setFileFilter]=useState('');
- const loadRuns=useCallback(async()=>{const r=await request<Run[]>(`/jobs?project_id=${projectId}`);setRuns(r.filter(j=>j.kind==='stage1_extract'));},[projectId]);
+ const loadRuns=useCallback(async()=>{const r=await request<Run[]>(`/jobs?project_id=${projectId}&kind=stage1_extract`);setRuns(r.filter(j=>j.kind==='stage1_extract'));},[projectId]);
  const load=useCallback(async()=>{
   await loadRuns();if(!runId)return;
   const [r,list]=await Promise.all([request<Run>(`/jobs/${runId}`),request<{items:Api[];total:number}>(`/jobs/${runId}/apis?${new URLSearchParams({q,method,page:String(page),limit:'30',...(unresolved?{unresolved:'true'}:{})})}`)]);
