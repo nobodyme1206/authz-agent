@@ -42,9 +42,10 @@ def event(db, job, kind, data=None):
     db.flush()
 
 def public(obj):
-    result = {c.name: getattr(obj, c.name) for c in obj.__table__.columns if c.name not in {'worker'}}
+    excluded = {'worker'}
+    if isinstance(obj, Job) and obj.kind == 'stage1_extract': excluded.add('result')
+    result = {c.name: getattr(obj, c.name) for c in obj.__table__.columns if c.name not in excluded}
     if isinstance(obj, Job) and obj.kind == 'stage1_extract':
-        result['has_result'] = obj.result is not None
         result['result'] = None  # Large stage results use the dedicated result endpoint.
     return result
 

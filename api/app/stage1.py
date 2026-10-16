@@ -8,7 +8,7 @@ from jsonschema import ValidationError
 from .contracts import validate_result
 from .db import Snapshot, Stage1State, Stage1Api
 
-EXTRACTOR_VERSION = 'spring-java-1'
+EXTRACTOR_VERSION = 'spring-java-1.0.4'
 
 
 def api_identifier(identity):
