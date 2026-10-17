@@ -48,7 +48,7 @@ test('unknown triage is evidence backed and never erases mandatory unresolved ca
  const f=fixture('package p; @RestController class C{Remote auth;@PostMapping("/x")void run(@RequestParam String id){auth.allow(id);save(id);}void save(String id){}}'),a=buildAudit(f.index,f.nav,f.entry),p=proposal(f.e);
  p.unresolved=['specific user grant not available'];p.unresolved_reviews=[{issue:p.unresolved[0],disposition:'deferred',reason:'predicate extraction does not require a specific user grant',evidence:[f.e]}];
  const h=hardenSubmission(p,f.entry,f.nav,f.index,[f.e],a);assert.ok(!h.proposal.unresolved.includes(p.unresolved[0]));assert.ok(h.proposal.unresolved.some(s=>s.includes('调用组')));assert.equal(h.audit.unknown_reviews.length,1);
- p.unresolved_reviews[0].evidence=[];assert.throws(()=>hardenSubmission(p,f.entry,f.nav,f.index,[f.e],a),/review_not_evidenced/);
+ p.unresolved_reviews[0].evidence=[];const invalid=hardenSubmission(p,f.entry,f.nav,f.index,[f.e],a);assert.ok(invalid.proposal.unresolved.includes(p.unresolved[0]));assert.equal(invalid.audit.rejected_reviews.length,1);
 });
 
 test('a source-backed deferred note need not be duplicated in blocking unresolved',()=>{

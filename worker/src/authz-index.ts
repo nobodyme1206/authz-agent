@@ -6,7 +6,7 @@ import {bare,argumentsOf,ev,first,nodes,text,tokens,type JavaClass,type JavaInde
 import {calls,constant,type ApiEntry} from './spring.ts';
 import {safePath} from './files.ts';
 
-export const ANALYZER_VERSION='authz-java-1.1.3';
+export const ANALYZER_VERSION='authz-java-1.1.4';
 export type SqlStatement={namespace:string;id:string;kind:string;evidence:Evidence;includes:string[];dynamic:string[]};
 export type NavNode={symbol:string;file:string;start_line:number;end_line:number;depth:number;parameters:{name:string;type:string}[]};
 export type Edge={from:string;call:string;line:number;arguments:string[];status:string;targets:string[];owner_type?:string};

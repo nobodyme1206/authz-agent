@@ -167,3 +167,18 @@ test('provider reservation and SDK schema failures cannot bypass per-request lim
   }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
  }
 });
+
+test('optional review drafts are separate from compact final submission and cannot erase unknowns without proof',async()=>{
+ const {createServer}=await import('node:http');const {entry,file}=await setup();let requests=0;let last:any;
+ const server=createServer(async(req,res)=>{let body='';for await(const c of req)body+=c;requests++;const input=JSON.parse(body),submit=input.tools.find((t:any)=>t.function.name==='submit_authorization');
+ if(submit)assert.deepEqual(Object.keys(submit.function.parameters.properties).sort(),['checks','operations','scope','unresolved']);
+ const name=requests===1?'read_source_lines':requests===2?'record_analysis_notes':'submit_authorization';const e={file,start_line:1,end_line:1};
+ const args=requests===1?e:requests===2?{mechanism_reviews:[{id:'not-a-mechanism',reason:'unverified optional statement',evidence:[e]}],unresolved_reviews:[{issue:'remaining helper',disposition:'deferred',reason:'attempt to remove without read proof',evidence:[{...e,start_line:90,end_line:90}]}]}:{unresolved:['remaining helper'],scope:['entry'],operations:[{ref:'write',description:'Save requested record',evidence:[e]}],checks:[]};
+ const chunk={id:'notes-fixture',object:'chat.completion.chunk',created:1,model:'fixture'};res.writeHead(200,{'Content-Type':'text/event-stream'});
+ res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'c'+requests,type:'function',function:{name,arguments:JSON.stringify(args)}}]},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[],usage:{prompt_tokens:100,completion_tokens:20,total_tokens:120}})+'\n\n');res.end('data: [DONE]\n\n');
+ });
+ await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const port=(server.address() as{port:number}).port;
+ try{await runStage2({id:'notes-fixture',snapshot_id:'snap',source_revision:'rev',options:{api_id:entry.api.api_id,stage1_run_id:'s1',input_hash:'hash'}},{...config,apiKey:'fixture',modelId:'fixture',baseUrl:`http://127.0.0.1:${port}/v1`},new AbortController().signal,limits,async(route,b:any)=>{if(route.endsWith('/context'))return{source:entry,input_hash:'hash'};last=structuredClone(b);return{};},()=>{});
+ assert.equal(requests,3);assert.equal(last.detail.analysis_complete,true);assert.equal(last.detail.audit.rejected_reviews.length,2);assert.ok(last.data.unresolved.includes('remaining helper'));assert.equal(last.detail.review_draft.mechanism_reviews.length,1);
+ }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
+});

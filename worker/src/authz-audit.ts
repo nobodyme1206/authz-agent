@@ -128,14 +128,14 @@ export function hardenSubmission(proposal:AuthSubmission,input:ApiEntry,nav:Navi
  p.checks=checks;
  const effectCoverage=a.facts.effects.map(f=>({...f,operation_refs:operations.filter(o=>contains(o.anchor!,f.evidence)).map(o=>o.ref),supporting_refs:supporting.filter(o=>o.evidence.some((e:Evidence)=>contains(e,f.evidence))).map(o=>o.ref)}));
  for(const f of effectCoverage)if(covers(f.evidence,reads)&&!f.operation_refs.length&&!f.supporting_refs.length)conditionIssues.push('已读资源效果尚未关联独立业务操作或有依据的辅助操作：'+f.id+' '+f.resource+' '+f.action);
- const mechanismReviews=p.mechanism_reviews||[];
- for(const review of mechanismReviews){const m=a.mechanisms.find(m=>m.id===review.id);if(!m||!review.reason.trim()||!review.evidence.length||!review.evidence.every(e=>covers(e,reads))||!m.evidence.every(e=>covers(e,review.evidence)))throw new Error('mechanism_review_not_evidenced');}
+ const mechanismReviews:NonNullable<AuthSubmission['mechanism_reviews']>=[],rejectedReviews:any[]=[];
+ for(const review of p.mechanism_reviews||[]){const m=a.mechanisms.find(m=>m.id===review.id);if(!m||!review.reason.trim()||!review.evidence.length||!review.evidence.every(e=>covers(e,reads))||!m.evidence.every(e=>covers(e,review.evidence))){rejectedReviews.push({...review,reason:'可选机制说明未采纳：标识、完整机制范围或已读证据不匹配',original_reason:review.reason});continue;}mechanismReviews.push(review);}
  for(const m of a.mechanisms.filter(m=>m.role==='tenant_override'))if(!mechanismReviews.some(r=>r.id===m.id))conditionIssues.push('Mapper 拦截忽略设置尚未解释：'+m.id+' '+m.label);
  const triage:any[]=[];
  for(const r of p.unresolved_reviews||[]){
-  if(!r.reason.trim()||!r.evidence.length||!r.evidence.every(e=>covers(e,reads)))throw new Error('unresolved_review_not_evidenced');
+  if(!r.reason.trim()||!r.evidence.length||!r.evidence.every(e=>covers(e,reads))){rejectedReviews.push({...r,reason:'可选未知分层未采纳：证据不完整，不能据此删除未知',original_reason:r.reason});continue;}
   triage.push(r);if(r.disposition!=='blocking')p.unresolved=p.unresolved.filter(x=>x!==r.issue);
  }
  p.unresolved=[...new Set([...p.unresolved,...coverage.issues,...conditionIssues])];
- return {proposal:p,audit:{call_groups:coverage.groups,mechanisms:coverage.mechanisms,mechanism_reviews:mechanismReviews,source_facts:a.facts,effect_coverage:effectCoverage,condition_dependencies:a.conditions,supporting_operations:supporting,operation_anchors:operations.map(o=>({ref:o.ref,anchor:o.anchor,resource:o.resource,action:o.action})),confirmed_checks:checks.filter(c=>!['validation','request_filter','observation'].includes(c.kind||'')&&!(c.kind==='query_scope'&&['request_only','unknown'].includes(c.scope_source||''))),unconfirmed_checks:rejected,unknown_reviews:triage,mandatory_unresolved:[...coverage.issues,...conditionIssues]}};
+ return {proposal:p,audit:{call_groups:coverage.groups,mechanisms:coverage.mechanisms,mechanism_reviews:mechanismReviews,rejected_reviews:rejectedReviews,source_facts:a.facts,effect_coverage:effectCoverage,condition_dependencies:a.conditions,supporting_operations:supporting,operation_anchors:operations.map(o=>({ref:o.ref,anchor:o.anchor,resource:o.resource,action:o.action})),confirmed_checks:checks.filter(c=>!['validation','request_filter','observation'].includes(c.kind||'')&&!(c.kind==='query_scope'&&['request_only','unknown'].includes(c.scope_source||''))),unconfirmed_checks:rejected,unknown_reviews:triage,mandatory_unresolved:[...coverage.issues,...conditionIssues]}};
 }

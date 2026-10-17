@@ -79,7 +79,7 @@ interface Mapper {
  const p:AuthSubmission={operations:[{ref:'query',description:'Read records',resource:'records',action:'read',anchor:f.e(8),evidence:[f.e(8)]}],checks:[],scope:[],unresolved:[]};
  assert.ok(harden(f,p).proposal.unresolved.some(s=>s.includes(m.id)));
  p.mechanism_reviews=[{id:m.id,reason:'Exact rows statement has tenantLine=true; do not infer tenant isolation for this query',evidence:[f.e(7)]}];assert.ok(!harden(f,p).proposal.unresolved.some(s=>s.includes(m.id)));
- p.mechanism_reviews[0].evidence=[f.e(8)];assert.throws(()=>harden(f,p),/mechanism_review_not_evidenced/);
+ p.mechanism_reviews[0].evidence=[f.e(8)];const invalid=harden(f,p);assert.ok(invalid.proposal.unresolved.some(s=>s.includes(m.id)));assert.equal(invalid.audit.rejected_reviews.length,1);
 });
 test('reflection assignments preserve INSERT versus UPDATE and all enclosing empty-value conditions',()=>{
  const f=fixture(guarded+`class MybatisInterceptor {
