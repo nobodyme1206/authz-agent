@@ -7,7 +7,7 @@ import {Type} from 'typebox';
 import {createAgentSession,createExtensionRuntime,defineTool,ModelRuntime,SessionManager,SettingsManager,type ResourceLoader} from '@earendil-works/pi-coding-agent';
 import {buildIndex,ev,type Evidence} from './java-index.ts';
 import {addBackendArtifacts,navigate,ANALYZER_VERSION,type BackendIndex,type Navigation} from './authz-index.ts';
-import {proofCatalog,resolveProofRefs,verifyRequestSources,verifyAssignmentClaims,correctionSource} from './authz-protocol.ts';
+import {proofCatalog,resolveProofRefs,verifyRequestSources,verifyAssignmentClaims,correctionSource,compactMessages} from './authz-protocol.ts';
 import {listFiles,readLines,redact,classifyError} from './files.ts';
 import {calls,constant,type ApiEntry} from './spring.ts';
 import {requestReservation,estimateContextTokens,calibratedGrowth,shouldFinalize} from './authz-budget.ts';
@@ -230,7 +230,7 @@ export async function runStage2(job:AuthJob,config:ModelConfig,signal:AbortSigna
  ];
  const loader:ResourceLoader={getExtensions:()=>({extensions:[],errors:[],runtime:createExtensionRuntime()}),getSkills:()=>({skills:[],diagnostics:[]}),getPrompts:()=>({prompts:[],diagnostics:[]}),getThemes:()=>({themes:[],diagnostics:[]}),getAgentsFiles:()=>({agentsFiles:[]}),getSystemPrompt:()=>systemPrompt,getSystemPromptSource:()=>undefined,getAppendSystemPrompt:()=>[],getAppendSystemPromptSources:()=>[],extendResources:()=>{},reload:async()=>{}};
  const created=await createAgentSession({cwd:root,agentDir:modelDir,modelRuntime:runtime,model,thinkingLevel:'off',resourceLoader:loader,tools:tools.map(t=>t.name),customTools:tools,sessionManager:SessionManager.inMemory(root),settingsManager:SettingsManager.inMemory({retry:{enabled:false},compaction:{enabled:false}})});session=created.session;session.agent.toolExecution='sequential';
- session.agent.onPayload=(payload:any)=>{const out={...payload,...detail.tool_mode==='submit_only'?{tool_choice:'required'}:{}};detail.provider_requests=[...detail.provider_requests||[],{max_output_tokens:out.max_tokens??out.max_completion_tokens??null,tool_choice:out.tool_choice||'auto',tool_count:out.tools?.length||0}].slice(-limits.turns);return out;};
+ session.agent.onPayload=(payload:any)=>{if(detail.tool_mode==='submit_only'&&!payload.tools?.some((t:any)=>t.function?.name==='submit_authorization'))throw new Error('missing_submission_tool_declaration');const out={...payload,...detail.tool_mode==='submit_only'?{tool_choice:'required'}:{}};detail.provider_requests=[...detail.provider_requests||[],{max_output_tokens:out.max_tokens??out.max_completion_tokens??null,tool_choice:out.tool_choice||'auto',tool_count:out.tools?.length||0}].slice(-limits.turns);return out;};
  const prepareRequest=session.agent.prepareRequest;
  session.agent.prepareRequest=async(request:any,requestSignal:AbortSignal)=>{
   const update=await prepareRequest?.(request,requestSignal);
@@ -246,9 +246,9 @@ export async function runStage2(job:AuthJob,config:ModelConfig,signal:AbortSigna
    repairView={task:'Extract actual operations and checks from these bounded original source blocks. Only cite the blocks supplied here. This is not an expected policy or a completed analysis. Preserve truncated scope as unresolved.',field_refs:input.api.request_fields.map(f=>f.location+':'+f.name),proposal:{operations:[],checks:[],scope:[],unresolved:[]},source:correctionSource({operations:[],checks:[],scope:[],unresolved:[]},refs,detail.agent_observed,index.sources,16000,preferred),input_api:input.api};
    detail.compact_source_view_used=true;detail.compact_source_ranges=repairView.source.blocks.map(({content,...e}:any)=>e);
   }
-  if(repairView){context.messages=[{role:'user',content:[{type:'text',text:JSON.stringify(repairView)}],timestamp:Date.now()}];if(repairView.error)detail.repair_context_used=true;}
+  if(repairView){context.messages=compactMessages(context.messages,JSON.stringify(repairView));if(repairView.error)detail.repair_context_used=true;}
   if(repairView&&sdkContextEstimate(context).tokens>config.contextWindow-config.maxTokens-4096){
-   repairView.source=correctionSource(repairView.proposal,proofCatalog(detail.agent_observed,nav,obligations.facts.guards),detail.agent_observed,index.sources,8000);context.messages=[{role:'user',content:[{type:'text',text:JSON.stringify(repairView)}],timestamp:Date.now()}];
+   repairView.source=correctionSource(repairView.proposal,proofCatalog(detail.agent_observed,nav,obligations.facts.guards),detail.agent_observed,index.sources,8000);context.messages=compactMessages(context.messages,JSON.stringify(repairView));
   }
   detail.context_planning={sdk_estimated_input:sdkContextEstimate(context).tokens,configured_context:config.contextWindow,requested_output:config.maxTokens,safety_tokens:4096};
   const estimated=estimateContextTokens(context);

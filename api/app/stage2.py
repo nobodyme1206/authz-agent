@@ -8,7 +8,7 @@ from jsonschema import ValidationError
 from .db import Job, Snapshot, Stage1Api, Stage2State
 from .contracts import validate_result
 
-ANALYZER_VERSION = 'authz-java-1.1.10'
+ANALYZER_VERSION = 'authz-java-1.1.11'
 TERMINAL = {'completed', 'failed', 'cancelled'}
 
 

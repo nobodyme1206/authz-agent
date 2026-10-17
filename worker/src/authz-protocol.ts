@@ -1,4 +1,5 @@
 /** Internal transport helpers. They supply source locations, never policy answers. */
+import {getCurrentSystemMessage,getCurrentTools} from '@earendil-works/pi-ai/utils/transcript';
 import {createHash} from 'node:crypto';
 import type {Evidence} from './java-index.ts';
 import type {Navigation} from './authz-index.ts';
@@ -45,4 +46,11 @@ export function correctionSource(p:AuthSubmission,refs:ProofRef[],reads:Evidence
  const blocks:{file:string;start_line:number;end_line:number;content:string}[]=[];let size=0;
  for(const e of requested){if(!covered(e,reads)||blocks.some(b=>contains(b,e)))continue;const source=sources.get(e.file);if(!source)continue;const lines=source.split(/\r?\n/);const content=lines.slice(e.start_line-1,e.end_line).map((l,i)=>(e.start_line+i)+': '+l).join('\n');if(size+content.length>maxChars)continue;blocks.push({...e,content});size+=content.length;}
  return {blocks,proof_refs:refs.filter(r=>blocks.some(b=>contains(b,r.evidence))),truncated:requested.some(e=>covered(e,reads)&&!blocks.some(b=>contains(b,e)))};
+}
+
+/** Pi transcript system messages also carry tool declarations. Never drop either. */
+export function compactMessages(messages:any[],payload:string){
+ const system=getCurrentSystemMessage(messages);
+ if(!system||!getCurrentTools([system]).some(t=>t.name==='submit_authorization'))throw new Error('compact_context_missing_submission_declaration');
+ return [system,{role:'user' as const,content:[{type:'text' as const,text:payload}],timestamp:Date.now()}];
 }
