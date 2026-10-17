@@ -90,7 +90,8 @@ def execute(path):
         print(json.dumps({'first_attempt':n+1,'of':18,'path':entry['path'],**{k:attempt[k]for k in ['job_id','state','status','tokens','error']}},ensure_ascii=False),flush=True)
         if len(state['attempts'])>=2 and all(a.get('error') in ['token_budget_reserve_exhausted','token_budget_exhausted'] for a in state['attempts'][-2:]):
             state['halted_reason']='consecutive_budget_reservation_failures';write(statepath,state);raise RuntimeError('round_halted_no_automatic_further_paid_submissions')
-        if j.get('error')in ['model_authentication_failed','model_usage_unavailable','model_not_configured','model_interface_incompatible']:raise RuntimeError('global_model_failure_remaining_jobs_not_submitted')
+        if j.get('error')in ['model_authentication_failed','model_usage_unavailable','model_not_configured','model_interface_incompatible']:
+            state['halted_reason']='global_model_failure';write(statepath,state);raise RuntimeError('global_model_failure_remaining_jobs_not_submitted')
     print(json.dumps({'acceptance_id':m['acceptance_id'],'attempts':len(state['attempts']),'tokens':sum(a.get('tokens',0)for a in state['attempts'])},ensure_ascii=False))
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('mode',choices=['prepare','execute']);p.add_argument('manifest');args=p.parse_args()
 if args.mode=='prepare':prepare(Path(args.manifest))
