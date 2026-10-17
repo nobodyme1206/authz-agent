@@ -71,7 +71,7 @@ export type AuditReview=ScopeReview;
 export function hardenSubmission(proposal:AuthSubmission,input:ApiEntry,nav:Navigation,index:BackendIndex,reads:Evidence[],a:AuditContext){
  const p=structuredClone(proposal),supporting:any[]=[],rejected:any[]=[],conditionIssues:string[]=[],map=new Map<string,string>(),seen=new Map<string,AuthOperation>();
  const allRefs=new Set<string>();
- const operations:AuthOperation[]=[];
+ const operations:AuthOperation[]=[],supportingCheckRelations:any[]=[];
  for(const op of p.operations){
   if(!op.ref||allRefs.has(op.ref))throw new Error('duplicate_operation_reference');allRefs.add(op.ref);
   if(op.role==='supporting'){
@@ -95,6 +95,8 @@ export function hardenSubmission(proposal:AuthSubmission,input:ApiEntry,nav:Navi
  for(const c of p.checks){
   c.operation_refs=c.operation_refs?.map(r=>map.get(r)||r);
   const core=!['validation','request_filter','observation'].includes(c.kind||'')&&!(c.kind==='query_scope'&&['request_only','unknown'].includes(c.scope_source||''));
+  const auxiliary=c.operation_refs?.filter(r=>supporting.some(o=>o.ref===r))||[];
+  if(auxiliary.length&&c.operation_refs?.some(r=>operations.some(o=>o.ref===r))){supportingCheckRelations.push({rule:c.rule,operation_refs:auxiliary,evidence:c.evidence});c.operation_refs=c.operation_refs.filter(r=>!auxiliary.includes(r));}
   if(core&&operations.length>1&&(!c.operation_refs?.length||c.operation_refs.some(r=>!map.has(r)&&!operations.some(o=>o.ref===r))))throw new Error('explicit_operation_refs_required');
   if(core&&c.operation_refs?.some(r=>!operations.some(o=>o.ref===r)))throw new Error('unknown_or_supporting_operation_reference');
   const jwt=c.kind==='authentication'&&(/jwt/i.test(c.rule)||c.evidence.some(e=>/\/(JwtFilter|ShiroRealm)\.java$/.test(e.file)));
@@ -104,6 +106,7 @@ export function hardenSubmission(proposal:AuthSubmission,input:ApiEntry,nav:Navi
   if(core&&(unread.length||configMissing)){
    const reason=configMissing?'配置依赖 external_anonymous_routes 未表达适用条件':'关键机制未完整核查：'+unread.map(m=>m.id).join(',');rejected.push({...c,reason});conditionIssues.push('检查候选未确认：'+reason);continue;
   }
+  if(core&&c.kind==='query_scope'&&c.scope_source==='database_policy'&&!a.mechanisms.some(m=>m.role==='data_policy')){rejected.push({...c,reason:'未定位数据库授权策略及其消费链；数据库原值与更新定位条件本身不构成策略来源'});conditionIssues.push('数据策略候选来源尚未核实：'+c.rule);continue;}
   if(core&&jwt){
    const claims=[...c.conditions||[],c.rule].join(' '),patterns=claims.match(/\/[A-Za-z0-9_{}./*-]*\*[A-Za-z0-9_{}./*-]*/g)||[];
    if(patterns.some(pattern=>!a.facts.routes.some(r=>r.pattern===pattern))){rejected.push({...c,reason:'路由通配条件没有源码声明依据'});conditionIssues.push('检查候选路由条件未确认：存在未声明的通配模式');continue;}
@@ -137,5 +140,5 @@ export function hardenSubmission(proposal:AuthSubmission,input:ApiEntry,nav:Navi
   triage.push(r);if(r.disposition!=='blocking')p.unresolved=p.unresolved.filter(x=>x!==r.issue);
  }
  p.unresolved=[...new Set([...p.unresolved,...coverage.issues,...conditionIssues])];
- return {proposal:p,audit:{call_groups:coverage.groups,mechanisms:coverage.mechanisms,mechanism_reviews:mechanismReviews,rejected_reviews:rejectedReviews,source_facts:a.facts,effect_coverage:effectCoverage,condition_dependencies:a.conditions,supporting_operations:supporting,operation_anchors:operations.map(o=>({ref:o.ref,anchor:o.anchor,resource:o.resource,action:o.action})),confirmed_checks:checks.filter(c=>!['validation','request_filter','observation'].includes(c.kind||'')&&!(c.kind==='query_scope'&&['request_only','unknown'].includes(c.scope_source||''))),unconfirmed_checks:rejected,unknown_reviews:triage,mandatory_unresolved:[...coverage.issues,...conditionIssues]}};
+ return {proposal:p,audit:{call_groups:coverage.groups,mechanisms:coverage.mechanisms,mechanism_reviews:mechanismReviews,rejected_reviews:rejectedReviews,source_facts:a.facts,effect_coverage:effectCoverage,condition_dependencies:a.conditions,supporting_operations:supporting,supporting_check_relations:supportingCheckRelations,operation_anchors:operations.map(o=>({ref:o.ref,anchor:o.anchor,resource:o.resource,action:o.action})),confirmed_checks:checks.filter(c=>!['validation','request_filter','observation'].includes(c.kind||'')&&!(c.kind==='query_scope'&&['request_only','unknown'].includes(c.scope_source||''))),unconfirmed_checks:rejected,unknown_reviews:triage,mandatory_unresolved:[...coverage.issues,...conditionIssues]}};
 }

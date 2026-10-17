@@ -4,7 +4,7 @@ import {parseSource,type Evidence} from './java-index.ts';
 import {extractApis} from './spring.ts';
 import {navigate,type BackendIndex} from './authz-index.ts';
 import {buildAudit,hardenSubmission} from './authz-audit.ts';
-import {requestReservation,estimateContextTokens} from './authz-budget.ts';
+import {requestReservation,estimateContextTokens,calibratedGrowth} from './authz-budget.ts';
 import {finalizeSubmission,type AuthSubmission} from './stage2.ts';
 function fixture(source:string){
  const file='src/main/java/sample/Controller.java',classes=parseSource(source,file);
@@ -57,6 +57,14 @@ test('unknown, duplicate and supporting-only operation refs are never silently d
  p.operations.push({...p.operations[0],ref:'lookup',role:'supporting'});p.checks[0].operation_refs=['lookup'];assert.throws(()=>harden(f,p),/supporting_operation_reference/);
  p.operations[1].ref='write';assert.throws(()=>harden(f,p),/duplicate_operation_reference/);
 });
+test('mixed primary and auxiliary protection is projected with an explicit audit relation',()=>{
+ const f=fixture(guarded),p=proposal(f);p.operations.push({ref:'lookup',role:'supporting',description:'Read prerequisite',evidence:[f.e(4)]});p.checks[0].operation_refs=['write','lookup'];
+ const h=harden(f,p);assert.deepEqual(h.proposal.checks[0].operation_refs,['write']);assert.deepEqual(h.audit.supporting_check_relations[0].operation_refs,['lookup']);assert.equal(h.proposal.checks.length,1);
+});
+test('a database original value used to target an update is not a database authorization policy',()=>{
+ const f=fixture(guarded),p=proposal(f);p.checks=[{kind:'query_scope',scope_source:'database_policy',fields:['query:id'],rule:'Update old owner relation based on original row',bindings:[{symbol:'oldOwner',source:'database original resource owner, no actor predicate'}],execution:'enforced',operation_refs:['write'],evidence:[f.e(5)],effect_evidence:[f.e(5)]}];
+ const h=harden(f,p);assert.equal(h.proposal.checks.length,0);assert.ok(h.proposal.unresolved.some(x=>x.includes('数据策略候选')));assert.ok(h.audit.unconfirmed_checks[0].reason.includes('数据库原值'));
+});
 test('authentication conditions cannot invent anonymous wildcard declarations',()=>{
  const f=fixture(guarded+`class ShiroConfig { void shiroFilter(){map.put("/public/**","anon");map.put("/**","jwt");} }`),p=proposal(f);
  p.checks=[{kind:'authentication',rule:'JWT authentication',fields:[],execution:'enforced',operation_refs:['write'],evidence:[f.e(5)],effect_evidence:[f.e(5)],conditions:['只有 /sys/** anon 不匹配时']}];
@@ -108,4 +116,9 @@ test('large Java source growth is estimated as tokens rather than charged as UTF
  assert.ok(estimate<Buffer.byteLength(code)*.6);assert.ok(estimate>5000);
  assert.ok(requestReservation(10000,60000,9000,1000,Math.ceil(estimate*1.25),4096).allowed);
  assert.ok(estimateContextTokens({content:'当前请求者'.repeat(1000)})>5000);
+});
+test('context calibration can correct an overestimating planner while reserving output',()=>{
+ const {growth,calibration}=calibratedGrowth(35719,30500,20469);assert.ok(calibration<1);
+ assert.ok(requestReservation(30000,60000,20469,677,growth,4096).allowed);
+ assert.ok(!requestReservation(54000,60000,20469,677,growth,4096).allowed);
 });

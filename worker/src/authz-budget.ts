@@ -9,3 +9,4 @@ export function requestReservation(total:number,limit:number,lastInput:number,la
  const reserve=lastInput+lastOutput+Math.max(0,growthTokens)+maxOutput;
  return {remaining:Math.max(0,limit-total),estimated_next_request:reserve,allowed:total<limit&&limit-total>=reserve};
 }
+export function calibratedGrowth(current:number,previous:number,lastInput:number){return {calibration:Math.max(.25,Math.min(4,lastInput/Math.max(1,previous))),growth:Math.ceil(Math.max(0,current-previous)*Math.max(.25,Math.min(4,lastInput/Math.max(1,previous)))*1.25)};}
