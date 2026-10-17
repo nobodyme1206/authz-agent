@@ -13,7 +13,7 @@ def command(*args):return subprocess.check_output(args,text=True,cwd=ROOT).strip
 def write(path,value):
     path=Path(path);path.parent.mkdir(parents=True,exist_ok=True);temp=path.with_suffix('.tmp');temp.write_text(json.dumps(value,ensure_ascii=False,indent=2));temp.replace(path)
 def fingerprint():
-    code="""import fs from 'node:fs';import crypto from 'node:crypto';import {systemPrompt}from './src/stage2.ts';const hash=b=>crypto.createHash('sha256').update(b).digest('hex');const limits=Object.fromEntries(Object.entries(process.env).filter(([k])=>k.startsWith('STAGE2_')));console.log(JSON.stringify({build:JSON.parse(fs.readFileSync('/app/build.json')),prompt_sha256:hash(systemPrompt),lock_sha256:hash(fs.readFileSync('package-lock.json')),limits}));"""
+    code="""import fs from 'node:fs';import crypto from 'node:crypto';import {systemPrompt}from './src/stage2.ts';import{ANALYZER_VERSION}from './src/authz-index.ts';const hash=b=>crypto.createHash('sha256').update(b).digest('hex');const limits=Object.fromEntries(Object.entries(process.env).filter(([k])=>k.startsWith('STAGE2_')));console.log(JSON.stringify({analyzer_version:ANALYZER_VERSION,build:JSON.parse(fs.readFileSync('/app/build.json')),prompt_sha256:hash(systemPrompt),lock_sha256:hash(fs.readFileSync('package-lock.json')),limits}));"""
     info=json.loads(command('docker','compose','exec','-T','agent-worker','node','--import','tsx','--input-type=module','-e',code))
     info['images']={}
     for service in ['api','agent-worker','web']:
@@ -57,7 +57,7 @@ def prepare(path):
         for sample in samples:
             matches=[a for a in result['data']['apis']if a['method']==sample['method']and a['path']==sample['path']];assert len(matches)==1,sample
             api=matches[0];raw=get('/jobs/'+run+'/apis/'+api['api_id']);entries.append({'group':group,'method':api['method'],'path':api['path'],'api_id':api['api_id'],'stage1_run_id':run,'snapshot_id':get('/jobs/'+run)['snapshot_id'],'source_revision':result['source_revision'],'input_hash':digest(raw)})
-    m={'acceptance_id':'hardening-'+uuid.uuid4().hex,'git_commit':head,'fingerprint':fp,'analyzer_version':'authz-java-1.1.0','stage1_runs':{'jeecg':s1_run,'controls':fixture_run},'jeecg_expectations_sha256':hashlib.sha256((ROOT/'docs/jeecg-stage2-samples.json').read_bytes()).hexdigest(),'expectations_sha256':hashlib.sha256((ROOT/'evaluation/control-expectations.json').read_bytes()).hexdigest(),'entries':entries}
+    m={'acceptance_id':'hardening-'+uuid.uuid4().hex,'git_commit':head,'fingerprint':fp,'analyzer_version':fp['analyzer_version'],'stage1_runs':{'jeecg':s1_run,'controls':fixture_run},'jeecg_expectations_sha256':hashlib.sha256((ROOT/'docs/jeecg-stage2-samples.json').read_bytes()).hexdigest(),'expectations_sha256':hashlib.sha256((ROOT/'evaluation/control-expectations.json').read_bytes()).hexdigest(),'entries':entries}
     assert len(entries)==18;write(path,m);print(json.dumps({'manifest':str(path),'acceptance_id':m['acceptance_id'],'jobs':len(entries),'stage1_runs':m['stage1_runs']},ensure_ascii=False),flush=True)
 def execute(path):
     m=json.loads(Path(path).read_text());statepath=Path(path).with_name(Path(path).stem+'-attempts.json');state=json.loads(statepath.read_text())if statepath.exists()else {'acceptance_id':m['acceptance_id'],'attempts':[]}

@@ -6,7 +6,7 @@ import {bare,argumentsOf,ev,first,nodes,text,tokens,type JavaClass,type JavaInde
 import {calls,constant,type ApiEntry} from './spring.ts';
 import {safePath} from './files.ts';
 
-export const ANALYZER_VERSION='authz-java-1.1.0';
+export const ANALYZER_VERSION='authz-java-1.1.1';
 export type SqlStatement={namespace:string;id:string;kind:string;evidence:Evidence;includes:string[];dynamic:string[]};
 export type NavNode={symbol:string;file:string;start_line:number;end_line:number;depth:number;parameters:{name:string;type:string}[]};
 export type Edge={from:string;call:string;line:number;arguments:string[];status:string;targets:string[];owner_type?:string};
@@ -115,7 +115,7 @@ export function navigate(index:BackendIndex,input:ApiEntry,limits={depth:6,nodes
  const nav:Navigation={entry:target,nodes:[],edges:[],candidates:[],disabled:[],unresolved:[],globals:[],controls:[]};
  const seen=new Set<string>();const queued:{method:Method;depth:number}[]=[{method:target,depth:0}];
  for(const c of index.classes){
-  if(/ShiroConfig|ShiroRealm|JwtFilter|PermissionDataAspect|MybatisPlusSaasConfig|QueryGenerator|TenantContext|JeecgDataAutorUtils/.test(c.name))nav.globals.push({symbol:c.fqn,evidence:{file:c.file,start_line:c.line,end_line:c.line}});
+  if(/ShiroConfig|ShiroRealm|JwtFilter|PermissionDataAspect|MybatisPlusSaasConfig|MybatisInterceptor|QueryGenerator|TenantContext|JeecgDataAutorUtils/.test(c.name))nav.globals.push({symbol:c.fqn,evidence:{file:c.file,start_line:c.line,end_line:c.line}});
   for(const f of c.fields)if(f.modifiers.includes('static')&&f.modifiers.includes('final')&&['Boolean','boolean'].includes(bare(f.type))){const value=constant(f.initializer,c,index);if(['true','false'].includes(value||''))nav.controls.push({symbol:c.fqn+'.'+f.name,value:value!,evidence:ev(c,f.node)});}
  }
  function booleanLookup(name:string,owner:JavaClass){const short=name.split('.').at(-1);const matches=nav.controls.filter(c=>c.symbol===name||c.symbol===owner.fqn+'.'+name||c.symbol.endsWith('.'+name)&&name.includes('.'));return matches.length===1?matches[0].value==='true':undefined;}
@@ -176,7 +176,16 @@ export function navigate(index:BackendIndex,input:ApiEntry,limits={depth:6,nodes
    if(status==='unresolved'&&['SecurityUtils','TenantContext','JwtUtil','PasswordUtil','TokenUtils'].includes(call.receiver))status='identity_boundary';
    const rawType=locals.get(call.receiver)||call.receiver;
    const imported=m.owner.imports.find(x=>!x.endsWith('.*')&&x.split('.').at(-1)===bare(rawType));
-   nav.edges.push({from:key(m),call:(call.receiver?call.receiver+'.':'')+call.name,line:call.line,arguments:raw,status,targets:targets.map(key),owner_type:owner?.fqn||imported||rawType});
+   let receiverType=owner?.fqn||imported||rawType;
+   const at=m.body.findIndex(t=>t.startOffset===call.start);
+   // Narrow signature-backed chain: java.security.Principal.getName() returns String.
+   // A custom object's getName/equals is deliberately not classified by name alone.
+   if(call.receiver===')'&&call.name==='equals'&&m.body[at-3]?.image==='('&&m.body[at-4]?.image==='getName'&&m.body[at-5]?.image==='.'){
+    const type=locals.get(m.body[at-6]?.image)||'';
+    if(type==='java.security.Principal'||type==='Principal'&&m.owner.imports.includes('java.security.Principal')&&!index.resolve(type,m.owner))receiverType='java.lang.String';
+   }
+   if(m.body[at-1]?.image==='new'&&!index.resolve(call.name,m.owner)&&['SecurityException','RuntimeException','IllegalArgumentException','IllegalStateException'].includes(call.name))receiverType='java.lang.'+call.name;
+   nav.edges.push({from:key(m),call:(call.receiver?call.receiver+'.':'')+call.name,line:call.line,arguments:raw,status,targets:targets.map(key),owner_type:receiverType});
    if(status==='resolved'){
     if(depth>=limits.depth)nav.unresolved.push('调用超过 '+limits.depth+' 层：'+key(m)+' -> '+call.name);
     else queued.push({method:targets[0],depth:depth+1});

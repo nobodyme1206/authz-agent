@@ -1,6 +1,6 @@
 import path from 'node:path';
 import {mkdir,writeFile,readFile} from 'node:fs/promises';
-import {buildAudit,hardenSubmission,type ScopeReview} from './authz-audit.ts';
+import {buildAudit,auditCoverage,hardenSubmission,type ScopeReview} from './authz-audit.ts';
 import {createHash} from 'node:crypto';
 import {Type} from 'typebox';
 import {createAgentSession,createExtensionRuntime,defineTool,ModelRuntime,SessionManager,SettingsManager,type ResourceLoader} from '@earendil-works/pi-coding-agent';
@@ -103,17 +103,18 @@ export async function runStage2(job:AuthJob,config:ModelConfig,signal:AbortSigna
  const java=await buildIndex(root,[],signal,async files=>{detail.stats.files_processed=files.length;await checkpoint();});
  const index=await addBackendArtifacts(root,java,signal);const nav=navigate(index,input,{depth:limits.depth,nodes:limits.nodes});const obligations=buildAudit(index,nav,input);detail.obligations=obligations;
  detail.phase='navigating';detail.graph={nodes:nav.nodes,edges:nav.edges};detail.candidates=nav.candidates;detail.disabled_regions=nav.disabled;detail.controls=nav.controls;
- detail.diagnostics=[...index.diagnostics,...index.artifactDiagnostics];detail.mandatory_unresolved=sum(nav.unresolved);
- nav.unresolved=detail.mandatory_unresolved;
+ detail.diagnostics=[...index.diagnostics,...index.artifactDiagnostics];detail.mandatory_unresolved=sum([...nav.unresolved,...auditCoverage(obligations,detail.agent_observed,nav).issues]);
+ // Keep source navigation issues separate from dynamic reading/call obligations.
  detail.stats={files_processed:index.files.length,methods:nav.nodes.length,edges:nav.edges.length,sql_statements:index.sql.length};
  // Conservative program-only checkpoint. No semantic authorization claims are fabricated.
  if(!data){
   const ops=nav.candidates.filter(c=>c.kind==='operation').slice(0,30);
   if(ops.length){const unique=ops.filter((op,i,a)=>a.findIndex(x=>JSON.stringify(x.evidence)===JSON.stringify(op.evidence)&&x.description===op.description)===i);
    detail.observed.push(...unique.map(o=>o.evidence));
-   data={api_id:input.api.api_id,operations:unique.map(o=>({id:identifier('op',input.api.api_id,[o.evidence,o.description]),description:o.description,evidence:[o.evidence]})),checks:[],scope:unique.map(o=>o.evidence.file+':'+o.evidence.start_line),unresolved:sum([...input.api.unresolved.map(u=>'Stage 1: '+u),...nav.unresolved,'尚未完成操作条件、授权语义及全局机制核查'])};
+   data={api_id:input.api.api_id,operations:unique.map(o=>({id:identifier('op',input.api.api_id,[o.evidence,o.description]),description:o.description,evidence:[o.evidence]})),checks:[],scope:unique.map(o=>o.evidence.file+':'+o.evidence.start_line),unresolved:sum([...input.api.unresolved.map(u=>'Stage 1: '+u),...detail.mandatory_unresolved,'尚未完成操作条件、授权语义及全局机制核查'])};
   }
  }
+ if(data)data.unresolved=sum([...data.unresolved,...detail.mandatory_unresolved]);
  await checkpoint();
  if(!config.apiKey||!config.baseUrl||!config.modelId){detail.phase='failed';detail.error='model_not_configured';await checkpoint();throw new Error('model_not_configured');}
  detail.phase='analysing';await checkpoint();
@@ -177,10 +178,12 @@ export async function runStage2(job:AuthJob,config:ModelConfig,signal:AbortSigna
     Type.Object({kind:Type.Literal('query_scope'),scope_source:Type.Union(['principal','database_policy','request_only','unknown'].map(k=>Type.Literal(k))),fields:Type.Array(Type.String()),rule:Type.String(),evidence:Type.Array(evidence,{minItems:1}),bindings:Type.Array(Type.Object({symbol:Type.String(),source:Type.String()}),{minItems:1}),conditions:Type.Array(Type.String()),execution:Type.Union(['enforced','not_blocking','unresolved'].map(x=>Type.Literal(x))),effect_evidence:Type.Array(evidence),operation_refs:Type.Optional(Type.Array(Type.String()))}),
     Type.Object({kind:Type.Union(['authentication','action_permission','resource_relation','validation','request_filter','observation'].map(k=>Type.Literal(k))),fields:Type.Array(Type.String()),rule:Type.String(),evidence:Type.Array(evidence,{minItems:1}),conditions:Type.Optional(Type.Array(Type.String())),bindings:Type.Optional(Type.Array(Type.Object({symbol:Type.String(),source:Type.String()}))),execution:Type.Union(['enforced','not_blocking','unresolved'].map(x=>Type.Literal(x))),effect_evidence:Type.Array(evidence),operation_refs:Type.Optional(Type.Array(Type.String()))})
    ])),scope:Type.Array(Type.String()),unresolved:Type.Array(Type.String()),call_reviews:Type.Optional(Type.Array(Type.Object({id:Type.String(),disposition:Type.Union(['framework_boundary','irrelevant','unresolved'].map(x=>Type.Literal(x))),reason:Type.String(),evidence:Type.Array(evidence,{minItems:1})}))),unresolved_reviews:Type.Optional(Type.Array(Type.Object({issue:Type.String(),disposition:Type.Union(['conditional','deferred','blocking'].map(x=>Type.Literal(x))),reason:Type.String(),evidence:Type.Array(evidence,{minItems:1})}))),observations:Type.Optional(Type.Array(Type.String())),inactive_candidates:Type.Optional(Type.Array(Type.Object({reason:Type.String(),evidence:Type.Array(evidence,{minItems:1})})))}),execute:async(_id,p)=>{
-   guard(true);expandEvidence(p as AuthSubmission);let final:AuthData;try{const hardened=hardenSubmission(p as AuthSubmission,input,nav,index,detail.agent_observed,obligations);detail.audit=hardened.audit;detail.mandatory_unresolved=sum([...nav.unresolved,...hardened.audit.mandatory_unresolved]);final=finalizeSubmission(hardened.proposal,input,nav,index,detail.agent_observed);}catch(e){if(detail.usage.totalTokens>=limits.tokens||turns>=limits.turns){error=detail.usage.totalTokens>=limits.tokens?'token_budget_exhausted':'turn_budget_exceeded';localAbort=true;void session.abort();}throw e;}
+   guard(true);expandEvidence(p as AuthSubmission);let final:AuthData;let hardened:ReturnType<typeof hardenSubmission>;try{hardened=hardenSubmission(p as AuthSubmission,input,nav,index,detail.agent_observed,obligations);final=finalizeSubmission(hardened.proposal,input,nav,index,detail.agent_observed);}catch(e){if(detail.usage.totalTokens>=limits.tokens||turns>=limits.turns){error=detail.usage.totalTokens>=limits.tokens?'token_budget_exhausted':'turn_budget_exceeded';localAbort=true;void session.abort();}throw e;}
    const acceptedInactive=(p.inactive_candidates||[]).filter(c=>c.evidence.every(e=>observedRange(e,detail.agent_observed)));
    detail.inactive_rejected=(p.inactive_candidates||[]).filter(c=>!acceptedInactive.includes(c)).map(c=>({...c,reason:'可选候选未采纳：证据未完整读取；'+c.reason}));
-   data=final;detail.validation_preconditions=p.checks.filter(c=>(c as AuthCheck).kind==='validation');detail.non_authorization_facts=p.checks.filter(c=>['request_filter','observation'].includes((c as AuthCheck).kind||'')||(c as AuthCheck).kind==='query_scope'&&(c as AuthCheck).scope_source==='request_only');detail.inactive_candidates=acceptedInactive;detail.agent_scope=p.scope;detail.observations=p.observations||[];detail.analysis_complete=true;detail.phase='finished';await checkpoint();submitted=true;localAbort=true;queueMicrotask(()=>void session.abort());return response({accepted:true});
+   const before={data,detail:structuredClone(detail)};
+   detail.audit=hardened!.audit;detail.mandatory_unresolved=sum([...nav.unresolved,...hardened!.audit.mandatory_unresolved]);
+   data=final;detail.validation_preconditions=p.checks.filter(c=>(c as AuthCheck).kind==='validation');detail.non_authorization_facts=p.checks.filter(c=>['request_filter','observation'].includes((c as AuthCheck).kind||'')||(c as AuthCheck).kind==='query_scope'&&(c as AuthCheck).scope_source==='request_only');detail.inactive_candidates=acceptedInactive;detail.agent_scope=p.scope;detail.observations=p.observations||[];detail.analysis_complete=true;detail.phase='finished';try{await checkpoint();}catch(e){data=before.data;for(const key of Object.keys(detail))delete detail[key];Object.assign(detail,before.detail);if(detail.usage.totalTokens>=limits.tokens||turns>=limits.turns){error=detail.usage.totalTokens>=limits.tokens?'token_budget_exhausted':'turn_budget_exceeded';localAbort=true;void session.abort();}throw e;}submitted=true;localAbort=true;queueMicrotask(()=>void session.abort());return response({accepted:true});
   }})
  ];
  const loader:ResourceLoader={getExtensions:()=>({extensions:[],errors:[],runtime:createExtensionRuntime()}),getSkills:()=>({skills:[],diagnostics:[]}),getPrompts:()=>({prompts:[],diagnostics:[]}),getThemes:()=>({themes:[],diagnostics:[]}),getAgentsFiles:()=>({agentsFiles:[]}),getSystemPrompt:()=>systemPrompt,getSystemPromptSource:()=>undefined,getAppendSystemPrompt:()=>[],getAppendSystemPromptSources:()=>[],extendResources:()=>{},reload:async()=>{}};

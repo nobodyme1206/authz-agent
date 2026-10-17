@@ -30,6 +30,7 @@ export function buildAudit(index:BackendIndex,nav:Navigation,input:ApiEntry):Aud
   // ignoreTable is an anonymous-class method and may not be in the ordinary symbol index.
   const lines=index.sources.get(c.file)!.split('\n'),at=lines.findIndex(l=>l.includes('boolean ignoreTable('));if(at>=0)add('tenant','tenant table applicability',[{file:c.file,start_line:at+1,end_line:Math.min(at+11,lines.length)}]);
  }}
+ if(nav.candidates.some(c=>c.kind==='operation'&&/\.(save|insert|update|delete|remove)/i.test(c.description))){method('MybatisInterceptor','intercept','mutation_pipeline');method('MybatisInterceptor','getLoginUser','mutation_pipeline');}
  if(nav.candidates.some(c=>c.description.includes('@PermissionData'))){method('PermissionDataAspect','arround','data_policy');method('QueryGenerator','getRuleMap','data_policy');method('QueryGenerator','installMplus','data_policy');}
  for(const e of nav.edges){
   const n=nav.nodes.find(n=>n.symbol===e.from);if(!n)continue;
@@ -96,7 +97,7 @@ export function hardenSubmission(proposal:AuthSubmission,input:ApiEntry,nav:Navi
  p.checks=checks;
  const triage:any[]=[];
  for(const r of p.unresolved_reviews||[]){
-  if(!p.unresolved.includes(r.issue)||!r.reason.trim()||!r.evidence.length||!r.evidence.every(e=>covers(e,reads)))throw new Error('unresolved_review_not_evidenced');
+  if(!r.reason.trim()||!r.evidence.length||!r.evidence.every(e=>covers(e,reads)))throw new Error('unresolved_review_not_evidenced');
   triage.push(r);if(r.disposition!=='blocking')p.unresolved=p.unresolved.filter(x=>x!==r.issue);
  }
  p.unresolved=[...new Set([...p.unresolved,...coverage.issues,...conditionIssues])];

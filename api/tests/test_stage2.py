@@ -1,4 +1,5 @@
 import copy
+import pytest
 from app.db import Session, Job, Stage1Api, Stage2State
 from app.stage2 import ANALYZER_VERSION
 from test_stage1 import client, setup, create, entry, checkpoint, H
@@ -112,13 +113,14 @@ def test_multiple_business_operations_require_explicit_check_scope(client):
     p['data']['checks'][0]['operation_ids']=['op1'];assert client.post(route,headers=H,json=p).status_code==200
 
 
-def test_old_analyzer_results_remain_readable_but_cannot_be_resumed(client):
+@pytest.mark.parametrize('old_version',['authz-java-1.0.0','authz-java-1.1.0'])
+def test_old_analyzer_results_remain_readable_but_cannot_be_resumed(client,old_version):
     s,j,e=source(client);new,ctx=start(client,s,j,e);p=payload(e,ctx)
     assert client.post('/internal/jobs/'+new['id']+'/stage2/checkpoints',headers=H,json=p).status_code==200
     client.post('/internal/jobs/'+new['id']+'/finish',headers=H,json={'boot':'stage-boot','state':'completed'})
     before=client.get('/api/jobs/'+new['id']+'/result').json()
     with Session() as db:
-        state=db.get(Stage2State,new['id']);state.analyzer_version='authz-java-1.0.0';db.commit()
+        state=db.get(Stage2State,new['id']);state.analyzer_version=old_version;db.commit()
     assert client.get('/api/jobs/'+new['id']+'/result').json()==before
     body={'kind':'stage2_analyze','snapshot_id':s['id'],'options':{'stage1_run_id':j['id'],'api_id':e['api']['api_id'],'base_run_id':new['id']}}
     assert client.post('/api/jobs',json=body).status_code==409

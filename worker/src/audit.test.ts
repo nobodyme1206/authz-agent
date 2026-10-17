@@ -50,3 +50,19 @@ test('unknown triage is evidence backed and never erases mandatory unresolved ca
  const h=hardenSubmission(p,f.entry,f.nav,f.index,[f.e],a);assert.ok(!h.proposal.unresolved.includes(p.unresolved[0]));assert.ok(h.proposal.unresolved.some(s=>s.includes('调用组')));assert.equal(h.audit.unknown_reviews.length,1);
  p.unresolved_reviews[0].evidence=[];assert.throws(()=>hardenSubmission(p,f.entry,f.nav,f.index,[f.e],a),/review_not_evidenced/);
 });
+
+test('a source-backed deferred note need not be duplicated in blocking unresolved',()=>{
+ const f=fixture(simple),p=proposal(f.e);p.unresolved_reviews=[{issue:'specific grant value',disposition:'deferred',reason:'not needed to extract predicate',evidence:[f.e]}];
+ const h=hardenSubmission(p,f.entry,f.nav,f.index,[f.e],buildAudit(f.index,f.nav,f.entry));assert.equal(h.audit.unknown_reviews.length,1);assert.ok(!h.proposal.unresolved.includes('specific grant value'));
+});
+
+test('typed Principal String chain and standard exception construction do not become opaque custom authorization',()=>{
+ const source='package p; import java.security.Principal; @RestController class C{ @PostMapping("/x") void run(@RequestParam String id, Principal principal){if(!principal.getName().equals(id))throw new SecurityException();save(id);}void save(String id){}}';
+ const f=fixture(source),a=buildAudit(f.index,f.nav,f.entry);assert.ok(!a.groups.some(g=>g.disposition==='unresolved'));
+ const custom=fixture(source.replace('import java.security.Principal;','').replace('Principal principal','Remote principal'));assert.ok(buildAudit(custom.index,custom.nav,custom.entry).groups.some(g=>g.disposition==='unresolved'&&g.calls.some(c=>c.call===").equals")));
+});
+
+
+test('write pipelines include source-defined MyBatis mutation interception in required scope',()=>{
+ const f=fixture(simple+' class MybatisInterceptor { Object intercept(Object invocation){ return invocation; } }'),a=buildAudit(f.index,f.nav,f.entry);assert.ok(a.mechanisms.some(m=>m.role==='mutation_pipeline'&&m.label==='MybatisInterceptor.intercept'));
+});
