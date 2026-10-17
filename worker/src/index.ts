@@ -57,7 +57,7 @@ while(!stopping){
         :await runProbe(job,config,emit,abort.signal);
       state='completed';
     }
-    catch(e){const code=String(e).replace(/^Error: /,'');error=timedOut?(job.kind==='stage1_extract'?'stage1_timeout':job.kind==='stage2_analyze'?'stage2_timeout':'model_timeout'):job.kind==='stage2_analyze'&&['token_budget_exhausted','turn_budget_exceeded','tool_budget_exceeded','model_usage_unavailable','structured_submission_missing'].includes(code)?code:classifyError(e);}
+    catch(e){const code=String(e).replace(/^Error: /,'');error=timedOut?(job.kind==='stage1_extract'?'stage1_timeout':job.kind==='stage2_analyze'?'stage2_timeout':'model_timeout'):job.kind==='stage2_analyze'&&['token_budget_exhausted','token_budget_reserve_exhausted','submission_validation_failed','turn_budget_exceeded','tool_budget_exceeded','model_usage_unavailable','structured_submission_missing'].includes(code)?code:classifyError(e);}
     finally{clearTimeout(timer);clearInterval(heartbeat);await drain();activeAbort=undefined;}
     if(cancelled){state='cancelled';error='cancelled_by_user';}
     if(stopping){state='failed';error='worker_interrupted';}

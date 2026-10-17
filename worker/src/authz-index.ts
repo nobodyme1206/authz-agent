@@ -6,11 +6,11 @@ import {bare,argumentsOf,ev,first,nodes,text,tokens,type JavaClass,type JavaInde
 import {calls,constant,type ApiEntry} from './spring.ts';
 import {safePath} from './files.ts';
 
-export const ANALYZER_VERSION='authz-java-1.1.1';
+export const ANALYZER_VERSION='authz-java-1.1.2';
 export type SqlStatement={namespace:string;id:string;kind:string;evidence:Evidence;includes:string[];dynamic:string[]};
 export type NavNode={symbol:string;file:string;start_line:number;end_line:number;depth:number;parameters:{name:string;type:string}[]};
 export type Edge={from:string;call:string;line:number;arguments:string[];status:string;targets:string[];owner_type?:string};
-export type Candidate={kind:string;description:string;evidence:Evidence;inactive?:boolean};
+export type Candidate={kind:string;description:string;evidence:Evidence;inactive?:boolean;resource?:string;action?:string;call_start?:number};
 export type Navigation={entry:Method;nodes:NavNode[];edges:Edge[];candidates:Candidate[];disabled:Evidence[];unresolved:string[];globals:{symbol:string;evidence:Evidence}[];controls:{symbol:string;value:string;evidence:Evidence}[]};
 export type BackendIndex=JavaIndex&{sql:SqlStatement[];artifactDiagnostics:string[]};
 const crud=new Set(['selectById','selectBatchIds','selectList','selectOne','selectCount','selectPage','getById','getOne','list','page','count','insert','update','updateById','delete','deleteById','deleteBatchIds','save','saveBatch','saveOrUpdate','saveOrUpdateBatch','updateBatchById','remove','removeById','removeByIds','removeBatchByIds']);
@@ -165,11 +165,16 @@ export function navigate(index:BackendIndex,input:ApiEntry,limits={depth:6,nodes
     if(targets.length===1)status='resolved';else if(targets.length>1)status='ambiguous';
    }
    const sql=index.sql.filter(s=>owner&&[owner,...parents(owner,index)].some(c=>c.fqn===s.namespace)&&s.id===call.name);
-   if(sql.length===1){status='sql';nav.candidates.push({kind:'sql',description:sql[0].kind+' '+sql[0].namespace+'.'+sql[0].id,evidence:sql[0].evidence});}
+   if(sql.length===1){status='sql';nav.candidates.push({kind:'sql',description:sql[0].kind+' '+sql[0].namespace+'.'+sql[0].id,evidence:sql[0].evidence});
+    if(['insert','update','delete'].includes(sql[0].kind)){
+     const resource=tableOf(entity(owner!,index),owner!,index);
+     nav.candidates.push({kind:'operation',resource,action:sql[0].kind,call_start:call.start,description:`源码分支内调用 ${call.receiver||'this'}.${call.name}(${raw.join(', ')})，Mapper ${sql[0].namespace}.${sql[0].id} ${sql[0].kind}，资源候选 ${resource}；SQL 及执行条件待核查`,evidence:e});
+    }
+   }
    else if(crud.has(call.name)&&((owner&&/Mapper|Service/.test(owner.name))||call.receiver==='baseMapper'||call.receiver==='this'||!call.receiver)){
     status=targets.length===1&&targets[0].body.length>=2?'resolved':'framework_crud';
     const resource=tableOf(entity(owner||m.owner,index),owner||m.owner,index);
-    nav.candidates.push({kind:'operation',description:`源码分支内调用 ${call.receiver||'this'}.${call.name}(${raw.join(', ')})，资源候选 ${resource}；执行条件及字段关系待语义核查`,evidence:e});
+    nav.candidates.push({kind:'operation',resource,action:call.name,call_start:call.start,description:`源码分支内调用 ${call.receiver||'this'}.${call.name}(${raw.join(', ')})，资源候选 ${resource}；执行条件及字段关系待语义核查`,evidence:e});
    }
    if((['DateUtils','SqlInjectionUtil'].includes(call.receiver)||call.receiver==='CommonUtils'&&call.name==='getDatabaseType'||call.receiver==='SpringContextUtils'&&['getHttpServletRequest','getHttpServletResponse','getApplicationContext'].includes(call.name)))status='framework_value_boundary';
    if((status==='unresolved'||status==='ambiguous')&&(utilityReceivers.has(call.receiver)||scalarMethods.has(call.name)||/^(get|set|is)[A-Z]/.test(call.name)&&owner?.fields.some(f=>f.name.toLowerCase()===call.name.replace(/^(get|set|is)/,'').toLowerCase())))status='value_operation';

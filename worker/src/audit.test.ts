@@ -26,7 +26,7 @@ test('opaque custom calls cannot disappear or become irrelevant without complete
  assert.ok(!auditCoverage(a,[f.e],f.nav,[{...invalid,evidence:[f.e]}]).issues.some(s=>s.includes(g.id)));
 });
 test('duplicate effect anchors merge and check references retain the same business operation',()=>{
- const f=fixture(simple),p=proposal(f.e);p.operations.push({...p.operations[0],ref:'two',description:'Same write, another description'});
+ const f=fixture(simple.replace('save(id);','if(id==null)throw new SecurityException();save(id);')),p=proposal(f.e);p.operations.push({...p.operations[0],ref:'two',description:'Same write, another description'});
  p.checks=[{kind:'resource_relation',fields:['query:id'],rule:'Enforced actor relationship',operation_refs:['two'],execution:'enforced',effect_evidence:[f.e],evidence:[f.e]}];
  const h=hardenSubmission(p,f.entry,f.nav,f.index,[f.e],buildAudit(f.index,f.nav,f.entry));assert.equal(h.proposal.operations.length,1);assert.deepEqual(h.proposal.checks[0].operation_refs,['one']);
  const d=finalizeSubmission(h.proposal,f.entry,f.nav,f.index,[f.e]);assert.ok(d.operation);assert.equal(d.checks.length,1);

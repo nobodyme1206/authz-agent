@@ -50,7 +50,7 @@ test('real Pi SDK structured analysis and program-assigned references persist, w
  res.writeHead(200,{'Content-Type':'text/event-stream'});const chunk={id:'authz-fixture',object:'chat.completion.chunk',created:1,model:'fixture'};
  res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'call'+requests,type:'function',function:{name,arguments:JSON.stringify(args)}}]},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[],usage:{prompt_tokens:100,completion_tokens:20,total_tokens:120}})+'\n\n');res.end('data: [DONE]\n\n');});
  await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const port=(server.address() as {port:number}).port;
- try{await runStage2({id:'livefixture',snapshot_id:'snap',source_revision:'rev',options:{api_id:entry.api.api_id,stage1_run_id:'s1',input_hash:'hash'}},{...config,apiKey:'fixture',modelId:'fixture',baseUrl:`http://127.0.0.1:${port}/v1`},new AbortController().signal,{...limits,tokens:180},async(route,b:any)=>{if(route.endsWith('/context'))return {source:entry,input_hash:'hash'};data=b.data;detail=structuredClone(b.detail);return {};},()=>{});
+ try{await runStage2({id:'livefixture',snapshot_id:'snap',source_revision:'rev',options:{api_id:entry.api.api_id,stage1_run_id:'s1',input_hash:'hash'}},{...config,apiKey:'fixture',modelId:'fixture',baseUrl:`http://127.0.0.1:${port}/v1`},new AbortController().signal,{...limits,tokens:60000,tools:4},async(route,b:any)=>{if(route.endsWith('/context'))return {source:entry,input_hash:'hash'};data=b.data;detail=structuredClone(b.detail);return {};},()=>{});
  assert.equal(requests,2);assert.equal(detail.analysis_complete,true);assert.equal(detail.tool_calls,2);assert.equal(data.operation.description,'Write target resource via save(id)');assert.equal(detail.usage.totalTokens,240);
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
 });
@@ -140,10 +140,29 @@ test('invalid fields and rejected saves never poison the last valid checkpoint o
  for(const scenario of ['invalid_fields','save_rejected']){
  const {createServer}=await import('node:http');const {entry,file}=await setup();let requests=0;let last:any;
  const server=createServer(async(req,res)=>{for await(const _ of req){}requests++;const submitted=requests>1;const ev={file,start_line:1,end_line:1};const name=submitted?'submit_authorization':'read_source_lines';
- const args=submitted?{operations:[{ref:'write',description:'Write via save',evidence:[ev]}],checks:[{kind:'resource_relation',fields:[scenario==='invalid_fields'?'body:invented':'query:id'],rule:'Test invalid reference',execution:'enforced',effect_evidence:[ev],evidence:[ev]}],scope:[],unresolved:[]}:{...ev};
+ const args=submitted?{operations:[{ref:'write',description:'Write via save',evidence:[ev]}],checks:[{kind:'authentication',operation_refs:['write'],fields:[scenario==='invalid_fields'?'body:invented':'query:id'],rule:'Test invalid reference',execution:'enforced',effect_evidence:[ev],evidence:[ev]}],scope:[],unresolved:[]}:{...ev};
  const chunk={id:'invalid-submission',object:'chat.completion.chunk',created:1,model:'fixture'};res.writeHead(200,{'Content-Type':'text/event-stream'});res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'c'+requests,type:'function',function:{name,arguments:JSON.stringify(args)}}]},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[],usage:{prompt_tokens:100,completion_tokens:20,total_tokens:120}})+'\n\n');res.end('data: [DONE]\n\n');});
  await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const port=(server.address()as{port:number}).port;
  try{await assert.rejects(()=>runStage2({id:'invalid-reference-fixture',snapshot_id:'snap',source_revision:'rev',options:{api_id:entry.api.api_id,stage1_run_id:'s1',input_hash:'hash'}},{...config,apiKey:'fixture',modelId:'fixture',baseUrl:`http://127.0.0.1:${port}/v1`},new AbortController().signal,{...limits,turns:2},async(route,b:any)=>{if(route.endsWith('/context'))return{source:entry,input_hash:'hash'};if(scenario==='save_rejected'&&b.detail.analysis_complete)throw new Error('invalid_stage2_record');if(b.data)assert.ok((b.detail.mandatory_unresolved||[]).every((x:string)=>b.data.unresolved.includes(x)));last=structuredClone(b);return{};},()=>{}));assert.equal(requests,2);assert.equal(last.detail.phase,'failed');assert.equal(last.detail.analysis_complete,false);assert.equal(last.detail.usage.totalTokens,240);assert.equal(last.detail.audit,undefined);assert.ok(last.data.operations);}
  finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
+ }
+});
+
+test('provider reservation and SDK schema failures cannot bypass per-request limits',async()=>{
+ const {createServer}=await import('node:http');
+ for(const scenario of ['reservation','invalid_schema'] as const){
+  const {entry,file}=await setup();let requests=0;let last:any;
+  const server=createServer(async(req,res)=>{for await(const _ of req){}requests++;
+   const name=scenario==='reservation'?'read_source_lines':'submit_authorization';
+   const args=scenario==='reservation'?{file,start_line:1,end_line:1}:{operations:[],checks:[{kind:'authentication'}]};
+   const chunk={id:'guard-fixture',object:'chat.completion.chunk',created:1,model:'fixture'};res.writeHead(200,{'Content-Type':'text/event-stream'});
+   res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'c'+requests,type:'function',function:{name,arguments:JSON.stringify(args)}}]},finish_reason:null}]})+'\n\n');
+   res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[],usage:{prompt_tokens:100,completion_tokens:20,total_tokens:120}})+'\n\n');res.end('data: [DONE]\n\n');
+  });
+  await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const port=(server.address() as{port:number}).port;
+  try{
+   await assert.rejects(()=>runStage2({id:scenario,snapshot_id:'snap',source_revision:'rev',options:{api_id:entry.api.api_id,stage1_run_id:'s1',input_hash:'hash'}},{...config,apiKey:'fixture',modelId:'fixture',baseUrl:`http://127.0.0.1:${port}/v1`},new AbortController().signal,{...limits,turns:2,tokens:scenario==='reservation'?2000:60000},async(route,b:any)=>{if(route.endsWith('/context'))return{source:entry,input_hash:'hash'};last=structuredClone(b);return{};},()=>{}));
+   assert.equal(requests,scenario==='reservation'?1:2);assert.equal(last.detail.error,scenario==='reservation'?'token_budget_reserve_exhausted':'turn_budget_exceeded');assert.equal(last.detail.usage.totalTokens,requests*120);assert.equal(last.detail.analysis_complete,false);
+  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
  }
 });
