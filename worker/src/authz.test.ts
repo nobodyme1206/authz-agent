@@ -152,7 +152,8 @@ test('provider reservation and SDK schema failures cannot bypass per-request lim
  const {createServer}=await import('node:http');
  for(const scenario of ['reservation','invalid_schema'] as const){
   const {entry,file}=await setup();let requests=0;let last:any;
-  const server=createServer(async(req,res)=>{for await(const _ of req){}requests++;
+  const server=createServer(async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;requests++;
+   if(scenario==='invalid_schema'&&requests===2){const payload=JSON.parse(body);const errors=payload.messages.filter((m:any)=>m.role==='tool');assert.ok(errors.length);assert.ok(errors.every((m:any)=>!JSON.stringify(m.content).includes('Received arguments:')));}
    const name=scenario==='reservation'?'read_source_lines':'submit_authorization';
    const args=scenario==='reservation'?{file,start_line:1,end_line:1}:{operations:[],checks:[{kind:'authentication'}]};
    const chunk={id:'guard-fixture',object:'chat.completion.chunk',created:1,model:'fixture'};res.writeHead(200,{'Content-Type':'text/event-stream'});

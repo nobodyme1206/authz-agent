@@ -19,7 +19,9 @@ function branches(m:Method){return nodes(m.node,'ifStatement').flatMap(n=>{
  const rejection=body.flatMap((t,i)=>{if(!['throw','return'].includes(t.image))return [];let j=i;while(j<body.length&&body[j].image!==';')j++;return [range(m,body.slice(i,Math.min(j+1,body.length)))];});
  const catch_evidence=nodes(m.node,'tryStatement').flatMap(t=>{
   const all=tokens(t),at=all.findIndex(t=>t.image==='catch');if(at<0||!rejection.length)return [];
-  if(!rejection.some(r=>contains(range(m,all.slice(0,at)),r)))return [];
+  // A catch can intercept an exception, never an ordinary rejecting return.
+  const throws=body.filter(t=>t.image==='throw').map(t=>range(m,[t]));
+  if(!throws.some(r=>contains(range(m,all.slice(0,at)),r)))return [];
   return [range(m,all.slice(at))];
  });
  return [{condition:predicate.map(t=>t.image).join(' '),condition_evidence:range(m,predicate),rejections:rejection,evidence:range(m,ts.slice(0,stop)),catch_evidence,body}];
@@ -28,7 +30,7 @@ export function sourceFacts(index:BackendIndex,nav:Navigation):SourceFacts{
  const facts:SourceFacts={guards:[],effects:[],routes:[],mutations:[]};
  const relevant=index.classes.flatMap(c=>c.methods).filter(m=>nav.nodes.some(n=>n.file===m.owner.file&&n.symbol===m.owner.fqn+'.'+m.signature)||m.owner.name==='MybatisInterceptor');
  for(const m of relevant){
-  const bs=branches(m);facts.guards.push(...bs.filter(b=>b.rejections.length).map(({body,...b})=>b));
+  const bs=branches(m);if(m.owner.name!=='MybatisInterceptor')facts.guards.push(...bs.filter(b=>b.rejections.length).map(({body,...b})=>b));
   for(const call of calls(m.body)){
    const guards=bs.filter(b=>b.body[0].startOffset<=call.start&&b.body.at(-1)!.endOffset>=call.end).map(b=>({condition:b.condition,evidence:b.condition_evidence}));
    const evidence={file:m.owner.file,start_line:call.line,end_line:call.line};

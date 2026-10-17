@@ -61,6 +61,7 @@ def prepare(path):
     assert len(entries)==18;write(path,m);print(json.dumps({'manifest':str(path),'acceptance_id':m['acceptance_id'],'jobs':len(entries),'stage1_runs':m['stage1_runs']},ensure_ascii=False),flush=True)
 def execute(path):
     m=json.loads(Path(path).read_text());statepath=Path(path).with_name(Path(path).stem+'-attempts.json');state=json.loads(statepath.read_text())if statepath.exists()else {'acceptance_id':m['acceptance_id'],'attempts':[]}
+    assert not state.get('halted_reason'),'round previously halted: inspect records; do not automatically resume'
     assert fingerprint()==m['fingerprint'],'execution environment changed'
     assert command('git','rev-parse','HEAD')==m['git_commit'] and not command('git','status','--porcelain'),'code changed after freeze'
     for n,entry in enumerate(m['entries']):
@@ -83,6 +84,8 @@ def execute(path):
         execution=analysis['detail'].get('execution',{});assert execution.get('build')==m['fingerprint']['build'];assert execution.get('prompt_sha256')==m['fingerprint']['prompt_sha256'];assert execution.get('lock_sha256')==m['fingerprint']['lock_sha256']
         attempt.update({'finished':True,'state':j['state'],'error':j.get('error'),'phase':analysis['detail'].get('phase'),'status':result['status']if result else None,'tokens':analysis['detail'].get('usage',{}).get('totalTokens',0)});write(statepath,state)
         print(json.dumps({'first_attempt':n+1,'of':18,'path':entry['path'],**{k:attempt[k]for k in ['job_id','state','status','tokens','error']}},ensure_ascii=False),flush=True)
+        if len(state['attempts'])>=2 and all(a.get('error')=='token_budget_reserve_exhausted' for a in state['attempts'][-2:]):
+            state['halted_reason']='consecutive_budget_reservation_failures';write(statepath,state);raise RuntimeError('round_halted_no_automatic_further_paid_submissions')
         if j.get('error')in ['model_authentication_failed','model_usage_unavailable','model_not_configured']:raise RuntimeError('global_model_failure_remaining_jobs_not_submitted')
     print(json.dumps({'acceptance_id':m['acceptance_id'],'attempts':len(state['attempts']),'tokens':sum(a.get('tokens',0)for a in state['attempts'])},ensure_ascii=False))
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('mode',choices=['prepare','execute']);p.add_argument('manifest');args=p.parse_args()

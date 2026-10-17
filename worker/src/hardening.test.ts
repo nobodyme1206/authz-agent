@@ -4,7 +4,7 @@ import {parseSource,type Evidence} from './java-index.ts';
 import {extractApis} from './spring.ts';
 import {navigate,type BackendIndex} from './authz-index.ts';
 import {buildAudit,hardenSubmission} from './authz-audit.ts';
-import {requestReservation} from './authz-budget.ts';
+import {requestReservation,estimateContextTokens} from './authz-budget.ts';
 import {finalizeSubmission,type AuthSubmission} from './stage2.ts';
 function fixture(source:string){
  const file='src/main/java/sample/Controller.java',classes=parseSource(source,file);
@@ -37,6 +37,10 @@ test('post-write guards and caught rejection cannot be submitted as confirmed re
  const p=proposal(late);p.operations[0].anchor=late.e(5);p.operations[0].evidence=[late.e(5)];p.checks[0].evidence=[late.e(6)];p.checks[0].effect_evidence=[late.e(6)];assert.throws(()=>harden(late,p),/guard_after_protected/);
  const caught=fixture(guarded.replace('if(!id.equals("allowed")) throw new SecurityException();','try{if(!id.equals("allowed")) throw new SecurityException();}catch(SecurityException ignored){}'));
  const h=harden(caught,proposal(caught));assert.equal(h.proposal.checks.length,0);assert.ok(h.proposal.unresolved.some(x=>x.includes('异常传播')));
+});
+test('a rejecting return inside try is not intercepted by a catch clause',()=>{
+ const f=fixture(guarded.replace('if(!id.equals("allowed")) throw new SecurityException();','try{if(!id.equals("allowed")) return;}catch(SecurityException ignored){}'));
+ assert.equal(harden(f,proposal(f)).proposal.checks.length,1);
 });
 test('different write resources must have separate anchors and explicitly scoped checks',()=>{
  const f=fixture(guarded.replace(' RecordsService records;',' RecordsService records; LinksService links;').replace('  records.updateById(id);','  records.updateById(id);\n  links.removeById(id);').replace('@TableName("records") class Record {}','@TableName("records") class Record {}\nclass LinksService extends ServiceImpl<LinkMapper,Link> {}\n@TableName("links") class Link {}'));
@@ -98,4 +102,10 @@ test('request reservation includes repeated prompt cost, cached input, growth an
  assert.equal(requestReservation(20000,60000,9000,1000,0,4096).allowed,true);
  assert.equal(requestReservation(60000,60000,1,1,0,4096).allowed,false);
  assert.equal(requestReservation(20000,60000,9000,1000,-20000,4096).estimated_next_request,14096);
+});
+test('large Java source growth is estimated as tokens rather than charged as UTF-8 bytes',()=>{
+ const code='String username = principal.getName();\n'.repeat(1000),estimate=estimateContextTokens({content:code});
+ assert.ok(estimate<Buffer.byteLength(code)*.6);assert.ok(estimate>5000);
+ assert.ok(requestReservation(10000,60000,9000,1000,Math.ceil(estimate*1.25),4096).allowed);
+ assert.ok(estimateContextTokens({content:'当前请求者'.repeat(1000)})>5000);
 });
