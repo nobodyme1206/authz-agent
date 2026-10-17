@@ -58,7 +58,8 @@ def prepare(path):
             matches=[a for a in result['data']['apis']if a['method']==sample['method']and a['path']==sample['path']];assert len(matches)==1,sample
             api=matches[0];raw=get('/jobs/'+run+'/apis/'+api['api_id']);entries.append({'group':group,'method':api['method'],'path':api['path'],'api_id':api['api_id'],'stage1_run_id':run,'snapshot_id':get('/jobs/'+run)['snapshot_id'],'source_revision':result['source_revision'],'input_hash':digest(raw)})
     assert [e['group'] for e in entries]==['jeecg']*10+['control']*8,'fixed real-then-control order'
-    m={'acceptance_id':'hardening-'+uuid.uuid4().hex,'git_commit':head,'fingerprint':fp,'analyzer_version':fp['analyzer_version'],'stage1_runs':{'jeecg':s1_run,'controls':fixture_run},'jeecg_expectations_sha256':hashlib.sha256((ROOT/'docs/jeecg-stage2-samples.json').read_bytes()).hexdigest(),'expectations_sha256':hashlib.sha256((ROOT/'evaluation/control-expectations.json').read_bytes()).hexdigest(),'entries':entries}
+    prior_reserved=int(os.environ.get('ACCEPTANCE_PRIOR_RESERVED_TOKENS','0'));assert 0<=prior_reserved<=1080000
+    m={'prior_reserved_tokens':prior_reserved,'acceptance_id':'hardening-'+uuid.uuid4().hex,'git_commit':head,'fingerprint':fp,'analyzer_version':fp['analyzer_version'],'stage1_runs':{'jeecg':s1_run,'controls':fixture_run},'jeecg_expectations_sha256':hashlib.sha256((ROOT/'docs/jeecg-stage2-samples.json').read_bytes()).hexdigest(),'expectations_sha256':hashlib.sha256((ROOT/'evaluation/control-expectations.json').read_bytes()).hexdigest(),'entries':entries}
     assert len(entries)==18;write(path,m);print(json.dumps({'manifest':str(path),'acceptance_id':m['acceptance_id'],'jobs':len(entries),'stage1_runs':m['stage1_runs']},ensure_ascii=False),flush=True)
 def execute(path):
     m=json.loads(Path(path).read_text());statepath=Path(path).with_name(Path(path).stem+'-attempts.json');state=json.loads(statepath.read_text())if statepath.exists()else {'acceptance_id':m['acceptance_id'],'attempts':[]}
@@ -71,7 +72,7 @@ def execute(path):
             assert existing.get('finished'),'an attempt was interrupted; inspect it rather than resubmit'
             continue
         assert fingerprint()==m['fingerprint'],'execution environment changed between jobs'
-        if sum(a.get('tokens') or 0 for a in state['attempts'])+60000>1080000:
+        if m.get('prior_reserved_tokens',0)+sum(a.get('tokens') or 0 for a in state['attempts'])+60000>1080000:
             state['halted_reason']='round_token_budget_reservation';write(statepath,state);raise RuntimeError('round_budget_no_further_paid_submissions')
         attempt={'index':n,'entry':entry,'submission_intent':True,'finished':False};state['attempts'].append(attempt);write(statepath,state)
         # Save intent before POST so a lost connection never causes a hidden duplicate model call.

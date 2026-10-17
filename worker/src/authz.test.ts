@@ -153,7 +153,7 @@ test('provider reservation and SDK schema failures cannot bypass per-request lim
  for(const scenario of ['reservation','invalid_schema'] as const){
   const {entry,file}=await setup();let requests=0;let last:any;
   const server=createServer(async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;requests++;
-   if(scenario==='invalid_schema'&&requests===2){const payload=JSON.parse(body);const errors=payload.messages.filter((m:any)=>m.role==='tool');assert.ok(errors.length);assert.ok(errors.every((m:any)=>!JSON.stringify(m.content).includes('Received arguments:')));}
+   if(scenario==='invalid_schema'&&requests===2){const payload=JSON.parse(body);const errors=payload.messages.filter((m:any)=>m.role==='tool');assert.ok(errors.length||JSON.stringify(payload.messages).includes('sdk_submission_rejected'));assert.ok(errors.every((m:any)=>!JSON.stringify(m.content).includes('Received arguments:')));}
    const name=scenario==='reservation'?'get_analysis_bundle':'submit_authorization';
    const args=scenario==='reservation'?{}:{operations:[],checks:[{kind:'authentication'}]};
    const chunk={id:'guard-fixture',object:'chat.completion.chunk',created:1,model:'fixture'};res.writeHead(200,{'Content-Type':'text/event-stream'});
@@ -221,5 +221,26 @@ test('one correction uses bounded actual source, accepts proof IDs and retains p
  });await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const port=(server.address() as{port:number}).port;
  try{await runStage2({id:'repair-fixture',snapshot_id:'snap',source_revision:'rev',options:{api_id:entry.api.api_id,stage1_run_id:'s1',input_hash:'hash'}},{...config,apiKey:'fixture',modelId:'fixture',baseUrl:`http://127.0.0.1:${port}/v1`},new AbortController().signal,limits,async(route,b:any)=>{if(route.endsWith('/context'))return{source:entry,input_hash:'hash'};last=structuredClone(b);return{};},()=>{});
  assert.equal(requests,3);assert.equal(last.detail.analysis_complete,true);assert.equal(last.detail.repair_context_used,true);assert.ok(last.data.unresolved.includes('pending helper review'));assert.equal(last.detail.submission_errors.length,1);
+ }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
+});
+
+test('SDK truncated submissions enter one compact correction and force final tool selection',async()=>{
+ const {createServer}=await import('node:http');const {entry,file}=await setup();let requests=0;let last:any;
+ const server=createServer(async(req,res)=>{let body='';for await(const c of req)body+=c;requests++;const input=JSON.parse(body);
+ if(requests===3){assert.equal(input.tool_choice,'required');assert.ok(JSON.stringify(input.messages).includes('sdk_submission_rejected'));assert.ok(JSON.stringify(input.messages).includes('save(id)'));}
+ const e={file,start_line:1,end_line:1};const name=requests===1?'get_analysis_bundle':'submit_authorization';const args=requests===1?{}:{operations:[{ref:'save',description:'Save requested entity',evidence:[e]}],checks:[],scope:['entry'],unresolved:[]};
+ const chunk={id:'sdk-truncated',object:'chat.completion.chunk',created:1,model:'fixture'};res.writeHead(200,{'Content-Type':'text/event-stream'});res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'trunc'+requests,type:'function',function:{name,arguments:JSON.stringify(args)}}]},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{},finish_reason:requests===2?'length':'tool_calls'}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[],usage:{prompt_tokens:100,completion_tokens:20,total_tokens:120}})+'\n\n');res.end('data: [DONE]\n\n');
+ });await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const port=(server.address() as{port:number}).port;
+ try{await runStage2({id:'sdk-truncated',snapshot_id:'snap',source_revision:'rev',options:{api_id:entry.api.api_id,stage1_run_id:'s1',input_hash:'hash'}},{...config,apiKey:'fixture',modelId:'fixture',baseUrl:`http://127.0.0.1:${port}/v1`},new AbortController().signal,limits,async(route,b:any)=>{if(route.endsWith('/context'))return{source:entry,input_hash:'hash'};last=structuredClone(b);return{};},()=>{});
+ assert.equal(requests,3);assert.equal(last.detail.analysis_complete,true);assert.equal(last.detail.repair_context_used,true);assert.equal(last.detail.submission_errors[0].code,'sdk_submission_rejected');assert.ok(last.detail.provider_requests.some((p:any)=>p.tool_choice==='required'));
+ }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
+});
+
+test('SDK context pressure compacts delivered source and retains full configured output room',async()=>{
+ const {createServer}=await import('node:http');const {file,root}=await setup();const source='package p;\n@RestController class C{\n @PostMapping("/x")\n void run(@RequestParam String id){\n save(id);\n'+'// '+('context '.repeat(65)+'\n// ').repeat(140)+'\n }\n void save(String id){}\n}';
+ await writeFile(path.join(root,'snap',file),source);const entry=extractApis(index({[file]:source}),'rev')[0];let requests=0;let last:any;
+ const server=createServer(async(req,res)=>{for await(const c of req){}requests++;const ev={file,start_line:5,end_line:5};const name=requests===1?'get_analysis_bundle':'submit_authorization';const args=requests===1?{}:{operations:[{ref:'save',description:'Observed save(id)',evidence:[ev]}],checks:[],scope:['visible source'],unresolved:['method tail remains unreviewed']};const chunk={id:'context-fixture',object:'chat.completion.chunk',created:1,model:'fixture'};res.writeHead(200,{'Content-Type':'text/event-stream'});res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'ctx'+requests,type:'function',function:{name,arguments:JSON.stringify(args)}}]},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[],usage:{prompt_tokens:100,completion_tokens:20,total_tokens:120}})+'\n\n');res.end('data: [DONE]\n\n');});
+ await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const port=(server.address() as{port:number}).port;
+ try{await runStage2({id:'context-fixture',snapshot_id:'snap',source_revision:'rev',options:{api_id:entry.api.api_id,stage1_run_id:'s1',input_hash:'hash'}},{...config,contextWindow:24000,apiKey:'fixture',modelId:'fixture',baseUrl:`http://127.0.0.1:${port}/v1`},new AbortController().signal,limits,async(route,b:any)=>{if(route.endsWith('/context'))return{source:entry,input_hash:'hash'};last=structuredClone(b);return{};},()=>{});assert.equal(requests,2);assert.equal(last.detail.compact_source_view_used,true);assert.equal(last.detail.provider_requests.at(-1).max_output_tokens,4096);assert.equal(last.detail.analysis_complete,true);assert.ok(last.data.unresolved.includes('method tail remains unreviewed'));
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
 });

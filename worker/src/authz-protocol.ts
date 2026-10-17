@@ -40,8 +40,8 @@ export function verifyAssignmentClaims(p:AuthSubmission,facts:SourceFacts,nav:Na
   if((unchanged||only)&&named.length<new Set(assignments.map(a=>a.property)).size)throw new Error('operation_description_conflicts_with_assignments: '+JSON.stringify(assignments.map(a=>({target:a.target,property:a.property,value:a.value,evidence:a.evidence,guards:a.guards}))));
  }
 }
-export function correctionSource(p:AuthSubmission,refs:ProofRef[],reads:Evidence[],sources:Map<string,string>,maxChars=16000){
- const requested=[...p.operations.flatMap(o=>[...o.evidence||[],...o.anchor?[o.anchor]:[]]),...p.checks.flatMap(c=>[...c.evidence||[],...c.effect_evidence||[]]),...refs.filter(r=>r.kind!=='source').map(r=>r.evidence)];
+export function correctionSource(p:AuthSubmission,refs:ProofRef[],reads:Evidence[],sources:Map<string,string>,maxChars=16000,preferred:Evidence[]=[]){
+ const requested=[...p.operations.flatMap(o=>[...o.evidence||[],...o.anchor?[o.anchor]:[]]),...p.checks.flatMap(c=>[...c.evidence||[],...c.effect_evidence||[]]),...refs.filter(r=>r.kind!=='source').map(r=>r.evidence),...preferred,...reads];
  const blocks:{file:string;start_line:number;end_line:number;content:string}[]=[];let size=0;
  for(const e of requested){if(!covered(e,reads)||blocks.some(b=>contains(b,e)))continue;const source=sources.get(e.file);if(!source)continue;const lines=source.split(/\r?\n/);const content=lines.slice(e.start_line-1,e.end_line).map((l,i)=>(e.start_line+i)+': '+l).join('\n');if(size+content.length>maxChars)continue;blocks.push({...e,content});size+=content.length;}
  return {blocks,proof_refs:refs.filter(r=>blocks.some(b=>contains(b,r.evidence))),truncated:requested.some(e=>covered(e,reads)&&!blocks.some(b=>contains(b,e)))};
