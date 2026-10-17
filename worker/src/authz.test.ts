@@ -45,8 +45,8 @@ const limits={turns:12,tools:30,tokens:60000,modelSeconds:2,depth:6,nodes:200};
 test('real Pi SDK structured analysis and program-assigned references persist, with no extra summary request',async()=>{
  const {createServer}=await import('node:http');const {file,entry}=await setup();let requests=0;let data:any;let detail:any;
  const server=createServer(async(req,res)=>{let body='';for await(const c of req)body+=c;const input=JSON.parse(body);requests++;assert.ok(input.tools.every((t:any)=>!['bash','write','edit'].includes(t.function.name)));
- if(requests===2)assert.deepEqual(input.tools.map((t:any)=>t.function.name),['submit_authorization']);
- const submitted=input.messages.some((m:any)=>m.role==='tool');const ev={file:submitted?'f1':file,start_line:1,end_line:1};const name=submitted?'submit_authorization':'read_source_lines';const args=submitted?{operations:[{ref:'write',description:'Write target resource via save(id)',evidence:[ev]}],checks:[],scope:['controller and save'],unresolved:['implementation of persistence unavailable']}:{file,start_line:1,end_line:1};
+ if(requests===2){assert.ok(input.tools.some((t:any)=>t.function.name==='submit_authorization'));assert.ok(input.tools.some((t:any)=>t.function.name==='read_source_lines'));}
+ const submitted=input.messages.some((m:any)=>m.role==='tool');const ev={file:submitted?'f1':file,start_line:1,end_line:1};const name=submitted?'submit_authorization':'get_analysis_bundle';const args=submitted?{operations:[{ref:'write',description:'Write target resource via save(id)',evidence:[ev]}],checks:[],scope:['controller and save'],unresolved:['implementation of persistence unavailable']}:{};
  res.writeHead(200,{'Content-Type':'text/event-stream'});const chunk={id:'authz-fixture',object:'chat.completion.chunk',created:1,model:'fixture'};
  res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'call'+requests,type:'function',function:{name,arguments:JSON.stringify(args)}}]},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[],usage:{prompt_tokens:100,completion_tokens:20,total_tokens:120}})+'\n\n');res.end('data: [DONE]\n\n');});
  await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const port=(server.address() as {port:number}).port;
@@ -70,7 +70,7 @@ test('Stage 2 model failures and budgets stop paid calls and preserve conservati
    if(scenario==='timeout')return;
    if(scenario==='authentication'){res.writeHead(401,{'Content-Type':'application/json'});res.end(JSON.stringify({error:{message:'Invalid API key'}}));return;}
    const chunk={id:'limitfixture',object:'chat.completion.chunk',created:1,model:'fixture'};res.writeHead(200,{'Content-Type':'text/event-stream'});
-   res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'r'+requests,type:'function',function:{name:'read_source_lines',arguments:JSON.stringify({file,start_line:1,end_line:1})}}]},finish_reason:null}]})+'\n\n');
+   res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'r'+requests,type:'function',function:{name:'get_analysis_bundle',arguments:JSON.stringify({})}}]},finish_reason:null}]})+'\n\n');
    res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\n');
    if(scenario!=='missing_usage')res.write('data: '+JSON.stringify({...chunk,choices:[],usage:{prompt_tokens:100,completion_tokens:20,total_tokens:120}})+'\n\n');res.end('data: [DONE]\n\n');
   });
@@ -139,8 +139,8 @@ test('AND/OR annotation and late/caught guard ordering remain available as sourc
 test('invalid fields and rejected saves never poison the last valid checkpoint or lose final usage',async()=>{
  for(const scenario of ['invalid_fields','save_rejected']){
  const {createServer}=await import('node:http');const {entry,file}=await setup();let requests=0;let last:any;
- const server=createServer(async(req,res)=>{for await(const _ of req){}requests++;const submitted=requests>1;const ev={file,start_line:1,end_line:1};const name=submitted?'submit_authorization':'read_source_lines';
- const args=submitted?{operations:[{ref:'write',description:'Write via save',evidence:[ev]}],checks:[{kind:'authentication',operation_refs:['write'],fields:[scenario==='invalid_fields'?'body:invented':'query:id'],rule:'Test invalid reference',execution:'enforced',effect_evidence:[ev],evidence:[ev]}],scope:[],unresolved:[]}:{...ev};
+ const server=createServer(async(req,res)=>{for await(const _ of req){}requests++;const submitted=requests>1;const ev={file,start_line:1,end_line:1};const name=submitted?'submit_authorization':'get_analysis_bundle';
+ const args=submitted?{operations:[{ref:'write',description:'Write via save',evidence:[ev]}],checks:[{kind:'authentication',operation_refs:['write'],fields:[scenario==='invalid_fields'?'body:invented':'query:id'],rule:'Test invalid reference',execution:'enforced',effect_evidence:[ev],evidence:[ev]}],scope:[],unresolved:[]}:{};
  const chunk={id:'invalid-submission',object:'chat.completion.chunk',created:1,model:'fixture'};res.writeHead(200,{'Content-Type':'text/event-stream'});res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'c'+requests,type:'function',function:{name,arguments:JSON.stringify(args)}}]},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[],usage:{prompt_tokens:100,completion_tokens:20,total_tokens:120}})+'\n\n');res.end('data: [DONE]\n\n');});
  await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const port=(server.address()as{port:number}).port;
  try{await assert.rejects(()=>runStage2({id:'invalid-reference-fixture',snapshot_id:'snap',source_revision:'rev',options:{api_id:entry.api.api_id,stage1_run_id:'s1',input_hash:'hash'}},{...config,apiKey:'fixture',modelId:'fixture',baseUrl:`http://127.0.0.1:${port}/v1`},new AbortController().signal,{...limits,turns:2},async(route,b:any)=>{if(route.endsWith('/context'))return{source:entry,input_hash:'hash'};if(scenario==='save_rejected'&&b.detail.analysis_complete)throw new Error('invalid_stage2_record');if(b.data)assert.ok((b.detail.mandatory_unresolved||[]).every((x:string)=>b.data.unresolved.includes(x)));last=structuredClone(b);return{};},()=>{}));assert.equal(requests,2);assert.equal(last.detail.phase,'failed');assert.equal(last.detail.analysis_complete,false);assert.equal(last.detail.usage.totalTokens,240);assert.equal(last.detail.audit,undefined);assert.ok(last.data.operations);}
@@ -154,8 +154,8 @@ test('provider reservation and SDK schema failures cannot bypass per-request lim
   const {entry,file}=await setup();let requests=0;let last:any;
   const server=createServer(async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;requests++;
    if(scenario==='invalid_schema'&&requests===2){const payload=JSON.parse(body);const errors=payload.messages.filter((m:any)=>m.role==='tool');assert.ok(errors.length);assert.ok(errors.every((m:any)=>!JSON.stringify(m.content).includes('Received arguments:')));}
-   const name=scenario==='reservation'?'read_source_lines':'submit_authorization';
-   const args=scenario==='reservation'?{file,start_line:1,end_line:1}:{operations:[],checks:[{kind:'authentication'}]};
+   const name=scenario==='reservation'?'get_analysis_bundle':'submit_authorization';
+   const args=scenario==='reservation'?{}:{operations:[],checks:[{kind:'authentication'}]};
    const chunk={id:'guard-fixture',object:'chat.completion.chunk',created:1,model:'fixture'};res.writeHead(200,{'Content-Type':'text/event-stream'});
    res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'c'+requests,type:'function',function:{name,arguments:JSON.stringify(args)}}]},finish_reason:null}]})+'\n\n');
    res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[],usage:{prompt_tokens:100,completion_tokens:20,total_tokens:120}})+'\n\n');res.end('data: [DONE]\n\n');
@@ -171,14 +171,14 @@ test('provider reservation and SDK schema failures cannot bypass per-request lim
 test('optional review drafts are separate from compact final submission and cannot erase unknowns without proof',async()=>{
  const {createServer}=await import('node:http');const {entry,file}=await setup();let requests=0;let last:any;
  const server=createServer(async(req,res)=>{let body='';for await(const c of req)body+=c;requests++;const input=JSON.parse(body),submit=input.tools.find((t:any)=>t.function.name==='submit_authorization');
- if(submit)assert.deepEqual(Object.keys(submit.function.parameters.properties).sort(),['checks','operations','scope','unresolved']);
+ if(submit)assert.deepEqual(Object.keys(submit.function.parameters.properties).sort(),['checks','inactive_candidates','observations','operations','scope','unresolved']);
  const name=requests===1?'read_source_lines':requests===2?'record_analysis_notes':'submit_authorization';const e={file,start_line:1,end_line:1};
  const args=requests===1?e:requests===2?{mechanism_reviews:[{id:'not-a-mechanism',reason:'unverified optional statement',evidence:[e]}],unresolved_reviews:[{issue:'remaining helper',disposition:'deferred',reason:'attempt to remove without read proof',evidence:[{...e,start_line:90,end_line:90}]}]}:{unresolved:['remaining helper'],scope:['entry'],operations:[{ref:'write',description:'Save requested record',evidence:[e]}],checks:[]};
  const chunk={id:'notes-fixture',object:'chat.completion.chunk',created:1,model:'fixture'};res.writeHead(200,{'Content-Type':'text/event-stream'});
  res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'c'+requests,type:'function',function:{name,arguments:JSON.stringify(args)}}]},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[],usage:{prompt_tokens:100,completion_tokens:20,total_tokens:120}})+'\n\n');res.end('data: [DONE]\n\n');
  });
  await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const port=(server.address() as{port:number}).port;
- try{await runStage2({id:'notes-fixture',snapshot_id:'snap',source_revision:'rev',options:{api_id:entry.api.api_id,stage1_run_id:'s1',input_hash:'hash'}},{...config,apiKey:'fixture',modelId:'fixture',baseUrl:`http://127.0.0.1:${port}/v1`},new AbortController().signal,limits,async(route,b:any)=>{if(route.endsWith('/context'))return{source:entry,input_hash:'hash'};last=structuredClone(b);return{};},()=>{});
+ try{await runStage2({id:'notes-fixture',snapshot_id:'snap',source_revision:'rev',options:{api_id:entry.api.api_id,stage1_run_id:'s1',input_hash:'hash'}},{...config,apiKey:'fixture',modelId:'fixture',baseUrl:`http://127.0.0.1:${port}/v1`},new AbortController().signal,limits,async(route,b:any)=>{if(route.endsWith('/context'))return{source:entry,input_hash:'hash',base:{detail:{}}};last=structuredClone(b);return{};},()=>{});
  assert.equal(requests,3);assert.equal(last.detail.analysis_complete,true);assert.equal(last.detail.audit.rejected_reviews.length,2);assert.ok(last.data.unresolved.includes('remaining helper'));assert.equal(last.detail.review_draft.mechanism_reviews.length,1);
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
 });
@@ -193,5 +193,19 @@ test('bounded source bundle supports a two-reply Pi analysis and sequential note
  });await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const port=(server.address() as{port:number}).port;
  try{await runStage2({id:'bundle-fixture',snapshot_id:'snap',source_revision:'rev',options:{api_id:entry.api.api_id,stage1_run_id:'s1',input_hash:'hash'}},{...config,apiKey:'fixture',modelId:'fixture',baseUrl:`http://127.0.0.1:${port}/v1`},new AbortController().signal,limits,async(route,b:any)=>{if(route.endsWith('/context'))return{source:entry,input_hash:'hash',base:{data:{api_id:entry.api.api_id,operation:{description:'Prior read checkpoint',evidence:[{file,start_line:1,end_line:1}]},checks:[],scope:[file],unresolved:[]},detail:{observed:[{file,start_line:1,end_line:1}],agent_observed:[{file,start_line:1,end_line:1}]}}};last=structuredClone(b);return{};},()=>{});
  assert.equal(requests,2);assert.equal(last.detail.analysis_complete,true);assert.equal(last.detail.bundle_read,true);assert.equal(last.detail.tool_calls,3);assert.equal(last.detail.observations[0],'No policy inferred; only source read proof fixture');assert.ok(last.detail.agent_observed.some((e:any)=>e.file===file));
+ }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
+});
+
+test('initial tasks can perform a focused read after the bundle before final submission',async()=>{
+ const {createServer}=await import('node:http');const {entry,file}=await setup();let requests=0;let last:any;
+ const server=createServer(async(req,res)=>{let body='';for await(const c of req)body+=c;requests++;const input=JSON.parse(body);
+ if(requests===2)assert.ok(input.tools.some((t:any)=>t.function.name==='read_source_lines'));
+ const e={file,start_line:1,end_line:1};const name=requests===1?'get_analysis_bundle':requests===2?'read_source_lines':'submit_authorization';
+ const args=requests===1?{}:requests===2?{file,start_line:1,end_line:1}:{operations:[{ref:'save',description:'Observed save(id)',anchor:e,evidence:[e]}],checks:[],scope:['read source'],unresolved:[]};
+ const chunk={id:'focused-fixture',object:'chat.completion.chunk',created:1,model:'fixture'};res.writeHead(200,{'Content-Type':'text/event-stream'});
+ res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'focused'+requests,type:'function',function:{name,arguments:JSON.stringify(args)}}]},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[],usage:{prompt_tokens:100,completion_tokens:20,total_tokens:120}})+'\n\n');res.end('data: [DONE]\n\n');
+ });await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const port=(server.address() as{port:number}).port;
+ try{await runStage2({id:'focused-fixture',snapshot_id:'snap',source_revision:'rev',options:{api_id:entry.api.api_id,stage1_run_id:'s1',input_hash:'hash'}},{...config,apiKey:'fixture',modelId:'fixture',baseUrl:`http://127.0.0.1:${port}/v1`},new AbortController().signal,limits,async(route,b:any)=>{if(route.endsWith('/context'))return{source:entry,input_hash:'hash'};last=structuredClone(b);return{};},()=>{});
+ assert.equal(requests,3);assert.equal(last.detail.analysis_complete,true);assert.equal(last.detail.tool_calls,3);
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
 });

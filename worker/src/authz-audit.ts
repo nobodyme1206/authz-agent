@@ -7,7 +7,7 @@ import type {AuthSubmission,AuthOperation} from './stage2.ts';
 import {sourceFacts,contains,type SourceFacts} from './authz-facts.ts';
 export const auditId=(prefix:string,v:unknown)=>prefix+'-'+createHash('sha256').update(JSON.stringify(v)).digest('hex').slice(0,16);
 export function covers(e:Evidence,reads:Evidence[]){let p=e.start_line;for(const r of reads.filter(r=>r.file===e.file).sort((a,b)=>a.start_line-b.start_line)){if(r.start_line>p)break;if(r.end_line>=p)p=r.end_line+1;if(p>e.end_line)return true;}return false;}
-export type Obligation={id:string;label:string;role:string;evidence:Evidence[]};
+export type Obligation={id:string;label:string;role:string;evidence:Evidence[];settings?:{tenantLine:string;statement:string}};
 export type CallGroup={id:string;symbol:string;file:string;calls:{id:string;call:string;line:number;owner_type:string}[];disposition:string;reason:string};
 export type ScopeReview={id:string;disposition:'framework_boundary'|'irrelevant'|'unresolved';reason:string;evidence:Evidence[]};
 export type AuditContext={mechanisms:Obligation[];groups:CallGroup[];conditions:{id:string;description:string;evidence:Evidence[]}[];diagnostics:string[];facts:SourceFacts};
@@ -15,7 +15,7 @@ function matches(pattern:string,route:string){const exp='^'+pattern.split('**').
 function importedType(index:BackendIndex,edge:Edge){return (edge.owner_type||'').replace(/<.*>/g,'');}
 export function buildAudit(index:BackendIndex,nav:Navigation,input:ApiEntry):AuditContext{
  const a:AuditContext={mechanisms:[],groups:[],conditions:[],diagnostics:[],facts:sourceFacts(index,nav)};
- const add=(role:string,label:string,evidence:Evidence[])=>{if(evidence.length)a.mechanisms.push({id:auditId('mechanism',[role,evidence]),label,role,evidence});};
+ const add=(role:string,label:string,evidence:Evidence[],settings?:Obligation['settings'])=>{if(evidence.length)a.mechanisms.push({id:auditId('mechanism',[role,evidence]),label,role,evidence,...settings?{settings}:{}});};
  const method=(cls:string,name:string,role:string)=>{for(const c of index.classes.filter(c=>c.name===cls)){const m=c.methods.find(m=>m.name===name);if(m)add(role,cls+'.'+name,[{file:c.file,start_line:Math.max(1,m.line-1),end_line:m.end}]);}};
  for(const c of index.classes.filter(c=>c.name==='ShiroConfig')){
   const m=c.methods.find(m=>['shiroFilter','shiroFilterFactoryBean'].includes(m.name));if(!m)continue;
@@ -43,7 +43,7 @@ export function buildAudit(index:BackendIndex,nav:Navigation,input:ApiEntry):Aud
  // visited as a call-graph node. Link it through the exact namespace and statement ID.
  for(const s of nav.candidates.filter(c=>c.kind==='sql'))for(const c of index.classes){
   for(const m of c.methods.filter(m=>s.description.endsWith(c.fqn+'.'+m.name))){
-   for(const ann of [...c.annotations,...m.annotations].filter(a=>a.name==='InterceptorIgnore'))add('tenant_override','Mapper override '+c.fqn+'.'+m.name,[ev(c,ann.node)]);
+   for(const ann of [...c.annotations,...m.annotations].filter(a=>a.name==='InterceptorIgnore')){const value=constant(ann.values.tenantLine||[],c,index);add('tenant_override','Mapper override '+c.fqn+'.'+m.name,[ev(c,ann.node)],['true','false'].includes(value||'')?{tenantLine:value!,statement:c.fqn+'.'+m.name}:undefined);}
   }
  }
  for(const e of nav.edges){
@@ -145,13 +145,18 @@ export function hardenSubmission(proposal:AuthSubmission,input:ApiEntry,nav:Navi
  const effectCoverage=a.facts.effects.map(f=>({...f,operation_refs:operations.filter(o=>contains(o.anchor!,f.evidence)).map(o=>o.ref),supporting_refs:supporting.filter(o=>o.evidence.some((e:Evidence)=>contains(e,f.evidence))).map(o=>o.ref)}));
  for(const f of effectCoverage)if(covers(f.evidence,reads)&&!f.operation_refs.length&&!f.supporting_refs.length)conditionIssues.push('已读资源效果尚未关联独立业务操作或有依据的辅助操作：'+f.id+' '+f.resource+' '+f.action);
  const mechanismReviews:NonNullable<AuthSubmission['mechanism_reviews']>=[],rejectedReviews:any[]=[];
+ const annotationSettings=a.mechanisms.filter(m=>m.role==='tenant_override'&&m.settings&&coverage.mechanisms.find(x=>x.id===m.id)?.read_complete&&new Set(a.mechanisms.filter(n=>n.settings?.statement===m.settings!.statement).map(n=>n.settings?.tenantLine)).size===1).map(m=>({id:m.id,statement:m.settings!.statement,tenantLine:m.settings!.tenantLine,evidence:m.evidence,reason:'已读 Mapper 注解声明 tenantLine='+m.settings!.tenantLine+'；true 声明忽略租户处理，false 声明不忽略。实际仍取决于插件启用、适用表及显式忽略策略；此记录不是有效保护。'}));
  for(const review of p.mechanism_reviews||[]){const m=a.mechanisms.find(m=>m.id===review.id);if(!m||!review.reason.trim()||!review.evidence.length||!review.evidence.every(e=>covers(e,reads))||!m.evidence.every(e=>covers(e,review.evidence))){rejectedReviews.push({...review,reason:'可选机制说明未采纳：标识、完整机制范围或已读证据不匹配',original_reason:review.reason});continue;}mechanismReviews.push(review);}
- for(const m of a.mechanisms.filter(m=>m.role==='tenant_override'))if(!mechanismReviews.some(r=>r.id===m.id))conditionIssues.push('Mapper 拦截忽略设置尚未解释：'+m.id+' '+m.label);
+ for(const m of a.mechanisms.filter(m=>m.role==='tenant_override'))if(!mechanismReviews.some(r=>r.id===m.id)&&!annotationSettings.some(r=>r.id===m.id))conditionIssues.push('Mapper 拦截忽略设置尚未解释：'+m.id+' '+m.label);
  const triage:any[]=[];
  for(const r of p.unresolved_reviews||[]){
   if(!r.reason.trim()||!r.evidence.length||!r.evidence.every(e=>covers(e,reads))){rejectedReviews.push({...r,reason:'可选未知分层未采纳：证据不完整，不能据此删除未知',original_reason:r.reason});continue;}
   triage.push(r);if(r.disposition!=='blocking')p.unresolved=p.unresolved.filter(x=>x!==r.issue);
  }
+ const deferredRuntime:any[]=[];
+ // Deployment unknowns are never removed by keyword matching. Explicit,
+ // evidence-backed unresolved_reviews are retained in unknown_reviews for audit.
+
  p.unresolved=[...new Set([...p.unresolved,...coverage.issues,...conditionIssues])];
- return {proposal:p,audit:{call_groups:coverage.groups,mechanisms:coverage.mechanisms,unread_methods:coverage.unread_methods,unread_sql:coverage.unread_sql,mechanism_reviews:mechanismReviews,rejected_reviews:rejectedReviews,source_facts:a.facts,effect_coverage:effectCoverage,condition_dependencies:a.conditions,supporting_operations:supporting,supporting_check_relations:supportingCheckRelations,operation_anchors:operations.map(o=>({ref:o.ref,anchor:o.anchor,resource:o.resource,action:o.action})),confirmed_checks:checks.filter(c=>!['validation','request_filter','observation'].includes(c.kind||'')&&!(c.kind==='query_scope'&&['request_only','unknown'].includes(c.scope_source||''))),unconfirmed_checks:rejected,unknown_reviews:triage,mandatory_unresolved:[...coverage.issues,...conditionIssues]}};
+ return {proposal:p,audit:{call_groups:coverage.groups,mechanisms:coverage.mechanisms,unread_methods:coverage.unread_methods,unread_sql:coverage.unread_sql,interceptor_settings:annotationSettings,deferred_runtime_questions:deferredRuntime,mechanism_reviews:mechanismReviews,rejected_reviews:rejectedReviews,source_facts:a.facts,effect_coverage:effectCoverage,condition_dependencies:a.conditions,supporting_operations:supporting,supporting_check_relations:supportingCheckRelations,operation_anchors:operations.map(o=>({ref:o.ref,anchor:o.anchor,resource:o.resource,action:o.action})),confirmed_checks:checks.filter(c=>!['validation','request_filter','observation'].includes(c.kind||'')&&!(c.kind==='query_scope'&&['request_only','unknown'].includes(c.scope_source||''))),unconfirmed_checks:rejected,unknown_reviews:triage,mandatory_unresolved:[...coverage.issues,...conditionIssues]}};
 }

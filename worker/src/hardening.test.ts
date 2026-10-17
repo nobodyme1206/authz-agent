@@ -4,7 +4,7 @@ import {parseSource,type Evidence} from './java-index.ts';
 import {extractApis} from './spring.ts';
 import {navigate,type BackendIndex} from './authz-index.ts';
 import {buildAudit,hardenSubmission,auditCoverage} from './authz-audit.ts';
-import {requestReservation,estimateContextTokens,calibratedGrowth} from './authz-budget.ts';
+import {requestReservation,estimateContextTokens,calibratedGrowth,shouldFinalize} from './authz-budget.ts';
 import {finalizeSubmission,type AuthSubmission} from './stage2.ts';
 function fixture(source:string){
  const file='src/main/java/sample/Controller.java',classes=parseSource(source,file);
@@ -86,9 +86,9 @@ interface Mapper {
  const f=fixture(source);f.index.sql=[{namespace:'sample.Mapper',id:'rows',kind:'select',evidence:f.e(8),includes:[],dynamic:[]}];f.nav=navigate(f.index,f.entry);f.audit=buildAudit(f.index,f.nav,f.entry);
  const m=f.audit.mechanisms.find(m=>m.role==='tenant_override')!;assert.ok(m);
  const p:AuthSubmission={operations:[{ref:'query',description:'Read records',resource:'records',action:'read',anchor:f.e(8),evidence:[f.e(8)]}],checks:[],scope:[],unresolved:[]};
- assert.ok(harden(f,p).proposal.unresolved.some(s=>s.includes(m.id)));
+ const interpreted=harden(f,p);assert.equal(interpreted.audit.interceptor_settings[0].tenantLine,'true');assert.ok(!interpreted.proposal.unresolved.some(s=>s.includes(m.id)));
  p.mechanism_reviews=[{id:m.id,reason:'Exact rows statement has tenantLine=true; do not infer tenant isolation for this query',evidence:[f.e(7)]}];assert.ok(!harden(f,p).proposal.unresolved.some(s=>s.includes(m.id)));
- p.mechanism_reviews[0].evidence=[f.e(8)];const invalid=harden(f,p);assert.ok(invalid.proposal.unresolved.some(s=>s.includes(m.id)));assert.equal(invalid.audit.rejected_reviews.length,1);
+ p.mechanism_reviews[0].evidence=[f.e(8)];f.reads=[f.e(1,6),f.e(8,9)];const invalid=harden(f,p);assert.ok(invalid.proposal.unresolved.some(s=>s.includes(m.id)));assert.equal(invalid.audit.rejected_reviews.length,1);
 });
 test('reflection assignments preserve INSERT versus UPDATE and all enclosing empty-value conditions',()=>{
  const f=fixture(guarded+`class MybatisInterceptor {
@@ -134,4 +134,19 @@ test('annotation permission needs reviewed proxy eligibility and explicit applic
  assert.ok(f.audit.conditions.some(c=>c.id==='permission_proxy_applicability'));assert.ok(f.audit.mechanisms.some(c=>c.role==='permission_proxy'));
  const missing=harden(f,p);assert.equal(missing.proposal.checks.length,0);assert.ok(missing.proposal.unresolved.some(x=>x.includes('permission_proxy_applicability')));
  p.checks[0].conditions=['仅当当前外部调用实际经过匹配 Shiro advisor 的代理，不能从一个 creator 的排除前缀推导全部 AOP 关闭'];assert.equal(harden(f,p).proposal.checks.length,1);
+});
+
+test('navigation reserves a later final reply without imposing a second-reply deadline',()=>{
+ const p={used:2000,limit:60000,input:1000,output:100,growth:200,maxOutput:4096,turns:2,maxTurns:12,tools:2,maxTools:30};
+ assert.equal(shouldFinalize(p),false);
+ assert.equal(shouldFinalize({...p,used:40000,input:12000}),true);
+ assert.equal(shouldFinalize({...p,turns:11}),true);
+ assert.equal(shouldFinalize({...p,tools:28}),true);
+ assert.equal(shouldFinalize({...p,growth:30000}),true);
+});
+test('deployment keywords alone cannot remove an unresolved condition',()=>{
+ const f=fixture(guarded+`class ShiroConfig { String excludeUrls; void shiroFilter(){ map.put(excludeUrls,"anon");map.put("/**","jwt"); } }`),p=proposal(f);
+ p.checks=[{kind:'authentication',fields:[],rule:'JWT authentication',execution:'enforced',operation_refs:['write'],evidence:[f.e(5)],effect_evidence:[f.e(5)],conditions:['仅在 excludeUrls 未匹配该路由时生效']}];
+ p.unresolved=['excludeUrls 实际部署配置及是否加载仍待核查'];
+ const h=harden(f,p);assert.ok(h.proposal.unresolved.includes(p.unresolved[0]));
 });

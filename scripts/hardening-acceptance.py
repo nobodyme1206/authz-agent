@@ -57,6 +57,7 @@ def prepare(path):
         for sample in samples:
             matches=[a for a in result['data']['apis']if a['method']==sample['method']and a['path']==sample['path']];assert len(matches)==1,sample
             api=matches[0];raw=get('/jobs/'+run+'/apis/'+api['api_id']);entries.append({'group':group,'method':api['method'],'path':api['path'],'api_id':api['api_id'],'stage1_run_id':run,'snapshot_id':get('/jobs/'+run)['snapshot_id'],'source_revision':result['source_revision'],'input_hash':digest(raw)})
+    assert [e['group'] for e in entries]==['jeecg']*10+['control']*8,'fixed real-then-control order'
     m={'acceptance_id':'hardening-'+uuid.uuid4().hex,'git_commit':head,'fingerprint':fp,'analyzer_version':fp['analyzer_version'],'stage1_runs':{'jeecg':s1_run,'controls':fixture_run},'jeecg_expectations_sha256':hashlib.sha256((ROOT/'docs/jeecg-stage2-samples.json').read_bytes()).hexdigest(),'expectations_sha256':hashlib.sha256((ROOT/'evaluation/control-expectations.json').read_bytes()).hexdigest(),'entries':entries}
     assert len(entries)==18;write(path,m);print(json.dumps({'manifest':str(path),'acceptance_id':m['acceptance_id'],'jobs':len(entries),'stage1_runs':m['stage1_runs']},ensure_ascii=False),flush=True)
 def execute(path):
@@ -70,6 +71,8 @@ def execute(path):
             assert existing.get('finished'),'an attempt was interrupted; inspect it rather than resubmit'
             continue
         assert fingerprint()==m['fingerprint'],'execution environment changed between jobs'
+        if sum(a.get('tokens') or 0 for a in state['attempts'])+60000>1080000:
+            state['halted_reason']='round_token_budget_reservation';write(statepath,state);raise RuntimeError('round_budget_no_further_paid_submissions')
         attempt={'index':n,'entry':entry,'submission_intent':True,'finished':False};state['attempts'].append(attempt);write(statepath,state)
         # Save intent before POST so a lost connection never causes a hidden duplicate model call.
         job=get('/jobs',{'kind':'stage2_analyze','snapshot_id':entry['snapshot_id'],'options':{'stage1_run_id':entry['stage1_run_id'],'api_id':entry['api_id']}})
@@ -84,7 +87,7 @@ def execute(path):
         execution=analysis['detail'].get('execution',{});assert execution.get('build')==m['fingerprint']['build'];assert execution.get('prompt_sha256')==m['fingerprint']['prompt_sha256'];assert execution.get('lock_sha256')==m['fingerprint']['lock_sha256']
         attempt.update({'finished':True,'state':j['state'],'error':j.get('error'),'phase':analysis['detail'].get('phase'),'status':result['status']if result else None,'tokens':analysis['detail'].get('usage',{}).get('totalTokens',0)});write(statepath,state)
         print(json.dumps({'first_attempt':n+1,'of':18,'path':entry['path'],**{k:attempt[k]for k in ['job_id','state','status','tokens','error']}},ensure_ascii=False),flush=True)
-        if len(state['attempts'])>=2 and all(a.get('error')=='token_budget_reserve_exhausted' for a in state['attempts'][-2:]):
+        if len(state['attempts'])>=2 and all(a.get('error') in ['token_budget_reserve_exhausted','token_budget_exhausted'] for a in state['attempts'][-2:]):
             state['halted_reason']='consecutive_budget_reservation_failures';write(statepath,state);raise RuntimeError('round_halted_no_automatic_further_paid_submissions')
         if j.get('error')in ['model_authentication_failed','model_usage_unavailable','model_not_configured']:raise RuntimeError('global_model_failure_remaining_jobs_not_submitted')
     print(json.dumps({'acceptance_id':m['acceptance_id'],'attempts':len(state['attempts']),'tokens':sum(a.get('tokens',0)for a in state['attempts'])},ensure_ascii=False))
