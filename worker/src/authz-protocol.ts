@@ -54,3 +54,9 @@ export function compactMessages(messages:any[],payload:string){
  if(!system||!getCurrentTools([system]).some(t=>t.name==='submit_authorization'))throw new Error('compact_context_missing_submission_declaration');
  return [system,{role:'user' as const,content:[{type:'text' as const,text:payload}],timestamp:Date.now()}];
 }
+
+/** Official DeepSeek requires an explicit switch; Pi thinkingLevel alone is not sent. */
+export function providerPayload(payload:any,baseUrl:string){
+ let official=false;try{official=new URL(baseUrl).hostname==='api.deepseek.com';}catch{}
+ return {...payload,...official?{thinking:{type:'disabled'}}:{}};
+}

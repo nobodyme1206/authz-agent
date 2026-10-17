@@ -7,7 +7,7 @@ import {Type} from 'typebox';
 import {createAgentSession,createExtensionRuntime,defineTool,ModelRuntime,SessionManager,SettingsManager,type ResourceLoader} from '@earendil-works/pi-coding-agent';
 import {buildIndex,ev,type Evidence} from './java-index.ts';
 import {addBackendArtifacts,navigate,ANALYZER_VERSION,type BackendIndex,type Navigation} from './authz-index.ts';
-import {proofCatalog,resolveProofRefs,verifyRequestSources,verifyAssignmentClaims,correctionSource,compactMessages} from './authz-protocol.ts';
+import {proofCatalog,resolveProofRefs,verifyRequestSources,verifyAssignmentClaims,correctionSource,compactMessages,providerPayload} from './authz-protocol.ts';
 import {listFiles,readLines,redact,classifyError} from './files.ts';
 import {calls,constant,type ApiEntry} from './spring.ts';
 import {requestReservation,estimateContextTokens,calibratedGrowth,shouldFinalize} from './authz-budget.ts';
@@ -102,7 +102,7 @@ export async function runStage2(job:AuthJob,config:ModelConfig,signal:AbortSigna
  const started=Date.now();const root=path.join(process.env.SNAPSHOT_ROOT||'/snapshots',job.snapshot_id);const runDir=path.join(process.env.RUN_ROOT||'/runs',job.id);
  await mkdir(runDir,{recursive:true});
  const context=await post(`/internal/jobs/${job.id}/stage2/context`,{});const input=context.source as ApiEntry;
- const detail:any={analyzer_version:ANALYZER_VERSION,input_hash:context.input_hash,phase:'indexing',analysis_complete:false,limits,observed:[],usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0},stats:{},mandatory_unresolved:[]};
+ const detail:any={analyzer_version:ANALYZER_VERSION,input_hash:context.input_hash,phase:'indexing',analysis_complete:false,limits,observed:[],usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,reasoning:0},stats:{},mandatory_unresolved:[]};
  let data:AuthData|null=context.base?.data?structuredClone(context.base.data):null;
  if(context.base?.detail?.observed)detail.observed=structuredClone(context.base.detail.observed);
  detail.agent_observed=actualSourceReads(context.base?.detail);
@@ -130,7 +130,7 @@ export async function runStage2(job:AuthJob,config:ModelConfig,signal:AbortSigna
  if(!config.apiKey||!config.baseUrl||!config.modelId){detail.phase='failed';detail.error='model_not_configured';await checkpoint();throw new Error('model_not_configured');}
  detail.phase='analysing';await checkpoint();
  let build:any={commit:'unrecorded'};try{build=JSON.parse(await readFile('/app/build.json','utf8'));}catch{}
- detail.execution={analyzer_version:ANALYZER_VERSION,build,prompt_sha256:createHash('sha256').update(systemPrompt).digest('hex'),lock_sha256:createHash('sha256').update(await readFile(new URL('../package-lock.json',import.meta.url))).digest('hex'),model:{id:config.modelId,provider:'openai-compatible',thinking:'off',provider_thinking:'not_overridden_by_pi_setting',sampling:'provider_default',context_window:config.contextWindow,max_output_tokens:config.maxTokens},limits};
+ detail.execution={analyzer_version:ANALYZER_VERSION,build,prompt_sha256:createHash('sha256').update(systemPrompt).digest('hex'),lock_sha256:createHash('sha256').update(await readFile(new URL('../package-lock.json',import.meta.url))).digest('hex'),model:{id:config.modelId,provider:'openai-compatible',thinking:'off',provider_thinking:new URL(config.baseUrl).hostname==='api.deepseek.com'?'disabled_explicitly':'not_overridden_by_pi_setting',sampling:'provider_default',context_window:config.contextWindow,max_output_tokens:config.maxTokens},limits};
  await checkpoint();
  const modelDir=path.join(runDir,'stage2');await mkdir(modelDir,{recursive:true});
  const runtime=await ModelRuntime.create({authPath:path.join(modelDir,'auth.json'),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false});
@@ -230,7 +230,7 @@ export async function runStage2(job:AuthJob,config:ModelConfig,signal:AbortSigna
  ];
  const loader:ResourceLoader={getExtensions:()=>({extensions:[],errors:[],runtime:createExtensionRuntime()}),getSkills:()=>({skills:[],diagnostics:[]}),getPrompts:()=>({prompts:[],diagnostics:[]}),getThemes:()=>({themes:[],diagnostics:[]}),getAgentsFiles:()=>({agentsFiles:[]}),getSystemPrompt:()=>systemPrompt,getSystemPromptSource:()=>undefined,getAppendSystemPrompt:()=>[],getAppendSystemPromptSources:()=>[],extendResources:()=>{},reload:async()=>{}};
  const created=await createAgentSession({cwd:root,agentDir:modelDir,modelRuntime:runtime,model,thinkingLevel:'off',resourceLoader:loader,tools:tools.map(t=>t.name),customTools:tools,sessionManager:SessionManager.inMemory(root),settingsManager:SettingsManager.inMemory({retry:{enabled:false},compaction:{enabled:false}})});session=created.session;session.agent.toolExecution='sequential';
- session.agent.onPayload=(payload:any)=>{if(detail.tool_mode==='submit_only'&&!payload.tools?.some((t:any)=>t.function?.name==='submit_authorization'))throw new Error('missing_submission_tool_declaration');const out={...payload};detail.provider_requests=[...detail.provider_requests||[],{max_output_tokens:out.max_tokens??out.max_completion_tokens??null,tool_choice:out.tool_choice||'auto',tool_count:out.tools?.length||0,thinking:out.thinking??null,reasoning_effort:out.reasoning_effort??null}].slice(-limits.turns);return out;};
+ session.agent.onPayload=(payload:any)=>{if(detail.tool_mode==='submit_only'&&!payload.tools?.some((t:any)=>t.function?.name==='submit_authorization'))throw new Error('missing_submission_tool_declaration');const out=providerPayload(payload,config.baseUrl);detail.provider_requests=[...detail.provider_requests||[],{max_output_tokens:out.max_tokens??out.max_completion_tokens??null,tool_choice:out.tool_choice||'auto',tool_count:out.tools?.length||0,thinking:out.thinking??null,reasoning_effort:out.reasoning_effort??null}].slice(-limits.turns);return out;};
  const prepareRequest=session.agent.prepareRequest;
  session.agent.prepareRequest=async(request:any,requestSignal:AbortSignal)=>{
   const update=await prepareRequest?.(request,requestSignal);
