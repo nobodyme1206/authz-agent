@@ -129,11 +129,26 @@ test('located source and SQL cannot silently count as reviewed without complete 
  const coverage=auditCoverage(f.audit,[f.e(1,6)],f.nav);assert.ok(coverage.unread_methods.some(n=>n.symbol.includes('Remote.allow')));assert.equal(coverage.unread_sql.length,1);assert.ok(coverage.issues.some(x=>x.includes('SQL 范围')));
 });
 test('annotation permission needs reviewed proxy eligibility and explicit applicability',()=>{
- const f=fixture(guarded.replace('@PostMapping','@RequiresPermissions("edit") @PostMapping')+'class ShiroConfig { Object authorizationAttributeSourceAdvisor(){return advisor;} DefaultAdvisorAutoProxyCreator defaultAdvisorAutoProxyCreator(){creator.setUsePrefix(true);creator.setAdvisorBeanNamePrefix("excluded");return creator;} }');
+ const f=fixture(guarded.replace('@PostMapping','@RequiresPermissions("edit") @PostMapping')+'class ShiroConfig { @Bean org.apache.shiro.spring.security.interceptor.AuthorizationAttributeSourceAdvisor authorizationAttributeSourceAdvisor(){return advisor;} DefaultAdvisorAutoProxyCreator defaultAdvisorAutoProxyCreator(){creator.setUsePrefix(true);creator.setAdvisorBeanNamePrefix("excluded");return creator;} }');
  const p=proposal(f);p.checks=[{kind:'action_permission',fields:[],rule:'RequiresPermissions edit',execution:'enforced',operation_refs:['write'],evidence:[f.e(4)],effect_evidence:[f.e(11)]}];
  assert.ok(f.audit.conditions.some(c=>c.id==='permission_proxy_applicability'));assert.ok(f.audit.mechanisms.some(c=>c.role==='permission_proxy'));
  const missing=harden(f,p);assert.equal(missing.proposal.checks.length,0);assert.ok(missing.proposal.unresolved.some(x=>x.includes('permission_proxy_applicability')));
- p.checks[0].conditions=['仅当当前外部调用实际经过匹配 Shiro advisor 的代理，不能从一个 creator 的排除前缀推导全部 AOP 关闭'];assert.equal(harden(f,p).proposal.checks.length,1);
+ p.checks[0].conditions=['仅当当前外部调用实际经过匹配 Shiro advisor 的代理，不能从一个 creator 的排除前缀推导全部 AOP 关闭'];const held=harden(f,p);assert.equal(held.proposal.checks.length,0);assert.equal(held.audit.proxy_facts[0].eligible,false);
+ const allowed=fixture(f.index.sources.values().next().value!.replace('setAdvisorBeanNamePrefix("excluded")','setAdvisorBeanNamePrefix("authorization")'));assert.equal(harden(allowed,p).proposal.checks.length,1);
+});
+
+test('proxy naming facts distinguish Shiro advisor beans from creators and unrelated advisors',()=>{
+ const config=`class ShiroConfig {
+ @Bean org.apache.shiro.spring.security.interceptor.AuthorizationAttributeSourceAdvisor shiroGuard(){return advisor;}
+ @Bean LoggingAdvisor eligibleLogging(){return logAdvisor;}
+ @Bean DefaultAdvisorAutoProxyCreator eligibleCreator(){creator.setUsePrefix(true);creator.setAdvisorBeanNamePrefix("eligible");return creator;}
+ }`;
+ const src=guarded.replace('@PostMapping','@RequiresPermissions("edit") @PostMapping')+config;
+ const f=fixture(src);assert.deepEqual(f.audit.proxy_facts[0].advisor_names,['shiroGuard']);assert.equal(f.audit.proxy_facts[0].eligible,false);
+ const unknown=fixture(src.replace('@Bean org.apache.shiro.spring.security.interceptor.AuthorizationAttributeSourceAdvisor','org.apache.shiro.spring.security.interceptor.AuthorizationAttributeSourceAdvisor'));
+ assert.equal(unknown.audit.proxy_facts[0].eligible,null);assert.deepEqual(unknown.audit.proxy_facts[0].advisor_names,[]);
+ const inherited=fixture(src.replace('org.apache.shiro.spring.security.interceptor.AuthorizationAttributeSourceAdvisor shiroGuard','CustomGuard shiroGuard')+'class CustomGuard extends org.apache.shiro.spring.security.interceptor.AuthorizationAttributeSourceAdvisor {}');
+ assert.deepEqual(inherited.audit.proxy_facts[0].advisor_names,['shiroGuard']);assert.equal(inherited.audit.proxy_facts[0].eligible,false);
 });
 
 test('navigation reserves a later final reply without imposing a second-reply deadline',()=>{

@@ -42,7 +42,7 @@ test('nonblocking, uncertain and unsupported effects cannot become effective che
  const f=fixture(simple),p=proposal(f.e),a=buildAudit(f.index,f.nav,f.entry);
  p.checks=[{kind:'resource_relation',fields:[],rule:'Guard after write or caught rejection',execution:'not_blocking',evidence:[f.e]}];assert.equal(hardenSubmission(p,f.entry,f.nav,f.index,[f.e],a).proposal.checks.length,0);
  p.checks[0].execution='unresolved';assert.ok(hardenSubmission(p,f.entry,f.nav,f.index,[f.e],a).proposal.unresolved.length);
- p.checks[0].execution='enforced';assert.throws(()=>hardenSubmission(p,f.entry,f.nav,f.index,[f.e],a),/effect_evidence_required/);
+ p.checks[0].execution='enforced';const held=hardenSubmission(p,f.entry,f.nav,f.index,[f.e],a);assert.equal(held.proposal.checks.length,0);assert.equal(held.proposal.operations.length,1);assert.ok(held.proposal.unresolved.some(x=>x.includes('执行效果证据缺失')));
 });
 test('unknown triage is evidence backed and never erases mandatory unresolved calls',()=>{
  const f=fixture('package p; @RestController class C{Remote auth;@PostMapping("/x")void run(@RequestParam String id){auth.allow(id);save(id);}void save(String id){}}'),a=buildAudit(f.index,f.nav,f.entry),p=proposal(f.e);

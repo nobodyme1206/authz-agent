@@ -10,11 +10,12 @@ export function covers(e:Evidence,reads:Evidence[]){let p=e.start_line;for(const
 export type Obligation={id:string;label:string;role:string;evidence:Evidence[];settings?:{tenantLine:string;statement:string}};
 export type CallGroup={id:string;symbol:string;file:string;calls:{id:string;call:string;line:number;owner_type:string}[];disposition:string;reason:string};
 export type ScopeReview={id:string;disposition:'framework_boundary'|'irrelevant'|'unresolved';reason:string;evidence:Evidence[]};
-export type AuditContext={mechanisms:Obligation[];groups:CallGroup[];conditions:{id:string;description:string;evidence:Evidence[]}[];diagnostics:string[];facts:SourceFacts};
+export type ProxyFact={method:string;prefix:string|null;eligible:boolean|null;advisor_names:string[];evidence:Evidence[]};
+export type AuditContext={proxy_facts:ProxyFact[];mechanisms:Obligation[];groups:CallGroup[];conditions:{id:string;description:string;evidence:Evidence[]}[];diagnostics:string[];facts:SourceFacts};
 function matches(pattern:string,route:string){const exp='^'+pattern.split('**').map(s=>s.split('*').map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('[^/]*')).join('.*')+'$';return new RegExp(exp).test(route);}
 function importedType(index:BackendIndex,edge:Edge){return (edge.owner_type||'').replace(/<.*>/g,'');}
 export function buildAudit(index:BackendIndex,nav:Navigation,input:ApiEntry):AuditContext{
- const a:AuditContext={mechanisms:[],groups:[],conditions:[],diagnostics:[],facts:sourceFacts(index,nav)};
+ const a:AuditContext={proxy_facts:[],mechanisms:[],groups:[],conditions:[],diagnostics:[],facts:sourceFacts(index,nav)};
  const add=(role:string,label:string,evidence:Evidence[],settings?:Obligation['settings'])=>{if(evidence.length)a.mechanisms.push({id:auditId('mechanism',[role,evidence]),label,role,evidence,...settings?{settings}:{}});};
  const method=(cls:string,name:string,role:string)=>{for(const c of index.classes.filter(c=>c.name===cls)){const m=c.methods.find(m=>m.name===name);if(m)add(role,cls+'.'+name,[{file:c.file,start_line:Math.max(1,m.line-1),end_line:m.end}]);}};
  for(const c of index.classes.filter(c=>c.name==='ShiroConfig')){
@@ -26,6 +27,29 @@ export function buildAudit(index:BackendIndex,nav:Navigation,input:ApiEntry):Aud
  }
  method('JwtFilter','executeLogin','authentication');method('JwtFilter','onAccessDenied','authentication');method('ShiroRealm','checkUserTokenIsEffect','authentication');
  if(nav.candidates.some(c=>c.kind==='annotation'&&/Requires|PreAuthorize/.test(c.description))){
+  // A creator is not an advisor, and an unrelated advisor cannot activate Shiro.
+  // Only declared beans of the relevant advisor type (or source-resolved subclasses)
+  // provide naming facts. Eligibility here is not proof of runtime proxy application.
+  const shiroAdvisor=(type:string,owner:typeof index.classes[number],seen=new Set<string>()):boolean=>{
+   const raw=type.replace(/<.*>/g,'').trim();
+   if(raw==='org.apache.shiro.spring.security.interceptor.AuthorizationAttributeSourceAdvisor')return true;
+   if(raw==='AuthorizationAttributeSourceAdvisor'&&owner.imports.some(i=>i==='org.apache.shiro.spring.security.interceptor.AuthorizationAttributeSourceAdvisor'||i==='org.apache.shiro.spring.security.interceptor.*'))return true;
+   const cls=index.resolve(raw,owner);if(!cls||seen.has(cls.fqn))return false;seen.add(cls.fqn);
+   return cls.parents.some(p=>shiroAdvisor(p,cls,seen));
+  };
+  const advisors=index.classes.flatMap(c=>c.methods).filter(m=>m.annotations.some(a=>a.name==='Bean')&&shiroAdvisor(m.returnType||'',m.owner));
+  const advisorNames=advisors.map(m=>{const ann=m.annotations.find(a=>a.name==='Bean');return ann&&(ann.values.name||ann.values.value)?constant(ann.values.name||ann.values.value,m.owner,index):m.name;});
+  for(const c of index.classes)for(const m of c.methods.filter(m=>m.returnType?.includes('DefaultAdvisorAutoProxyCreator')&&(c.name==='ShiroConfig'||m.annotations.some(a=>a.name==='Bean')))){
+   const cs=calls(m.body),uses=cs.filter(x=>x.name==='setUsePrefix'),prefixes=cs.filter(x=>x.name==='setAdvisorBeanNamePrefix');
+   const use=uses.length===1?constant(uses[0].args[0]||[],c,index):undefined;const prefix=prefixes.length===1?constant(prefixes[0].args[0]||[],c,index):undefined;
+   const conditional=m.body.some(t=>['if','switch','for','while','try'].includes(t.image));let eligible:boolean|null=null;
+   if(!conditional&&advisorNames.length&&advisorNames.every(n=>n!==undefined)){
+    if(use==='false')eligible=true;
+    else if(use==='true'&&prefix!==undefined&&uses[0].receiver===prefixes[0].receiver)eligible=advisorNames.some(n=>n!.startsWith(prefix));
+   }
+   a.proxy_facts.push({method:c.fqn+'.'+m.signature,prefix:prefix??null,eligible,advisor_names:advisorNames.filter((n):n is string=>n!==undefined),evidence:[ev(c,m.node)]});
+  }
+
   method('ShiroConfig','authorizationAttributeSourceAdvisor','permission_advisor');
   const proxyEvidence:Evidence[]=[];
   for(const c of index.classes.filter(c=>c.name==='ShiroConfig'))for(const m of c.methods.filter(m=>m.returnType?.includes('AutoProxyCreator'))){const e=ev(c,m.node);add('permission_proxy','Proxy creator eligibility, prefix and invocation conditions',[e]);proxyEvidence.push(e);}
@@ -113,10 +137,14 @@ export function hardenSubmission(proposal:AuthSubmission,input:ApiEntry,nav:Navi
   const relevant=a.mechanisms.filter(m=>jwt?['route','authentication'].includes(m.role):c.kind==='action_permission'?['permission_advisor','permission_proxy'].includes(m.role):c.kind==='query_scope'&&c.scope_source==='database_policy'?m.role==='data_policy':false);
   const unread=relevant.filter(m=>!coverage.mechanisms.find(x=>x.id===m.id)?.read_complete);
   const proxyDependent=c.kind==='action_permission'&&nav.candidates.some(s=>s.kind==='annotation'&&/Requires|PreAuthorize/.test(s.description)&&c.evidence.some(e=>contains(e,s.evidence)));
+  const shiroProxyDependent=proxyDependent&&nav.candidates.some(s=>s.kind==='annotation'&&/Requires(Permissions|Roles|Authentication|User|Guest)\b/.test(s.description)&&c.evidence.some(e=>contains(e,s.evidence)));
   const proxyMissing=proxyDependent&&a.conditions.some(x=>x.id==='permission_proxy_applicability')&&!c.conditions?.some(s=>/代理|proxy|AOP|advisor/i.test(s));
   const configMissing=core&&((jwt&&a.conditions.some(x=>x.id==='external_anonymous_routes')&&!c.conditions?.some(s=>/excludeUrls|匿名|anon/i.test(s)))||proxyMissing);
   if(core&&(unread.length||configMissing)){
    const reason=configMissing?'配置依赖 '+(proxyMissing?'permission_proxy_applicability':'external_anonymous_routes')+' 未表达适用条件':'关键机制未完整核查：'+unread.map(m=>m.id).join(',');rejected.push({...c,reason});conditionIssues.push('检查候选未确认：'+reason);continue;
+  }
+  if(core&&shiroProxyDependent&&a.proxy_facts.length&&a.proxy_facts.every(f=>f.eligible===false)){
+   rejected.push({...c,reason:'已声明 creator 的前缀不匹配已声明 advisor；其他实际适用的代理机制尚未证明',proxy_facts:a.proxy_facts});conditionIssues.push('注解检查代理资格未确认：不能把前缀不匹配解释为生效，也不能推断整个系统 AOP 关闭');continue;
   }
   if(core&&c.kind==='query_scope'&&c.scope_source==='database_policy'&&!a.mechanisms.some(m=>m.role==='data_policy')){rejected.push({...c,reason:'未定位数据库授权策略及其消费链；数据库原值与更新定位条件本身不构成策略来源'});conditionIssues.push('数据策略候选来源尚未核实：'+c.rule);continue;}
   if(core&&['query_scope','resource_relation'].includes(c.kind||'')&&coverage.unread_sql.some(s=>[...c.evidence,...c.effect_evidence||[]].some(e=>e.file===s.evidence.file&&e.start_line<=s.evidence.end_line&&e.end_line>=s.evidence.start_line))){rejected.push({...c,reason:'相关 SQL 尚未完整阅读，范围或关联关系的执行效果不能确认'});conditionIssues.push('检查候选相关 SQL 未完整核查：'+c.rule);continue;}
@@ -127,7 +155,8 @@ export function hardenSubmission(proposal:AuthSubmission,input:ApiEntry,nav:Navi
   if(core&&c.execution==='unresolved'){rejected.push({...c,reason:'执行效果未明确'});conditionIssues.push('检查候选执行效果未明确：'+c.rule);continue;}
   if(core&&c.execution==='not_blocking'){rejected.push({...c,reason:'检查未阻止对应操作'});continue;}
   if(core&&c.execution==='enforced'){
-   if(!c.effect_evidence?.length||!c.effect_evidence.every(e=>covers(e,reads)))throw new Error('enforcement_effect_evidence_required');
+   if(!c.effect_evidence?.length){rejected.push({...c,reason:'缺少执行效果证据，未确认为保护'});conditionIssues.push('检查候选执行效果证据缺失：'+c.rule);continue;}
+   if(!c.effect_evidence.every(e=>covers(e,reads)))throw new Error('enforcement_effect_evidence_required');
    if(c.effect_evidence.some(e=>nav.disabled.some(d=>d.file===e.file&&d.start_line<=e.start_line&&d.end_line>=e.end_line))){rejected.push({...c,reason:'执行效果证据位于已知关闭分支'});continue;}
    if(c.kind==='resource_relation'){
     const proof=[...c.evidence,...c.effect_evidence];
@@ -158,5 +187,5 @@ export function hardenSubmission(proposal:AuthSubmission,input:ApiEntry,nav:Navi
  // evidence-backed unresolved_reviews are retained in unknown_reviews for audit.
 
  p.unresolved=[...new Set([...p.unresolved,...coverage.issues,...conditionIssues])];
- return {proposal:p,audit:{call_groups:coverage.groups,mechanisms:coverage.mechanisms,unread_methods:coverage.unread_methods,unread_sql:coverage.unread_sql,interceptor_settings:annotationSettings,deferred_runtime_questions:deferredRuntime,mechanism_reviews:mechanismReviews,rejected_reviews:rejectedReviews,source_facts:a.facts,effect_coverage:effectCoverage,condition_dependencies:a.conditions,supporting_operations:supporting,supporting_check_relations:supportingCheckRelations,operation_anchors:operations.map(o=>({ref:o.ref,anchor:o.anchor,resource:o.resource,action:o.action})),confirmed_checks:checks.filter(c=>!['validation','request_filter','observation'].includes(c.kind||'')&&!(c.kind==='query_scope'&&['request_only','unknown'].includes(c.scope_source||''))),unconfirmed_checks:rejected,unknown_reviews:triage,mandatory_unresolved:[...coverage.issues,...conditionIssues]}};
+ return {proposal:p,audit:{proxy_facts:a.proxy_facts,call_groups:coverage.groups,mechanisms:coverage.mechanisms,unread_methods:coverage.unread_methods,unread_sql:coverage.unread_sql,interceptor_settings:annotationSettings,deferred_runtime_questions:deferredRuntime,mechanism_reviews:mechanismReviews,rejected_reviews:rejectedReviews,source_facts:a.facts,effect_coverage:effectCoverage,condition_dependencies:a.conditions,supporting_operations:supporting,supporting_check_relations:supportingCheckRelations,operation_anchors:operations.map(o=>({ref:o.ref,anchor:o.anchor,resource:o.resource,action:o.action})),confirmed_checks:checks.filter(c=>!['validation','request_filter','observation'].includes(c.kind||'')&&!(c.kind==='query_scope'&&['request_only','unknown'].includes(c.scope_source||''))),unconfirmed_checks:rejected,unknown_reviews:triage,mandatory_unresolved:[...coverage.issues,...conditionIssues]}};
 }
