@@ -1,0 +1,568 @@
+{
+  "analyzer_version": "authz-java-1.1.8",
+  "code_commit": "25f188237b828289ad94b44c4e0701ab5196eecc",
+  "acceptance_id": "hardening-a9695b341a0040338f55ca970c923a50",
+  "fingerprint": {
+    "analyzer_version": "authz-java-1.1.8",
+    "build": {
+      "commit": "25f188237b828289ad94b44c4e0701ab5196eecc",
+      "source_sha256": "29700238c7f8577eae51b3f6dd4fbd967ed5f08ad9b7874876a54f855e7b9add"
+    },
+    "prompt_sha256": "9ef7cf0f1ac299c64aeb38ed0e5cd515bd412cbcb18e1c7e1adbbef4cbae0434",
+    "lock_sha256": "cb854bac577264351204ceea68dc5684f21f5ec7159b8332b21e2a4c03b3d968",
+    "limits": {
+      "STAGE2_MAX_TOOLS": "30",
+      "STAGE2_TIMEOUT_SECONDS": "300",
+      "STAGE2_TOKEN_BUDGET": "60000",
+      "STAGE2_MAX_TURNS": "12",
+      "STAGE2_CALL_DEPTH": "6",
+      "STAGE2_CALL_NODES": "200",
+      "STAGE2_MODEL_TIMEOUT_SECONDS": "180",
+      "STAGE2_MAX_OUTPUT_TOKENS": "4096"
+    },
+    "images": {
+      "api": "sha256:2aca7fe30da1cde663130211fc46de7fff53fc735bd229179d6aa637c38d4c58",
+      "agent-worker": "sha256:cea7ff2c6d665de9961d49592d034dc5b1296a28cee76113ea49f42258a17ba9",
+      "web": "sha256:8733f1b5514dc805100e1f91a4c19e0b8a0227ae0c0c03f084062e5741784dd8"
+    },
+    "model": {
+      "configured": true,
+      "model_id": "deepseek-flash",
+      "provider": "openai-compatible",
+      "state": "configured"
+    }
+  },
+  "source_inputs": [
+    {
+      "group": "jeecg",
+      "method": "POST",
+      "path": "/sys/tenant/changeOwenUserTenant",
+      "api_id": "api-8a3764cc2174ccf827f9785c",
+      "stage1_run_id": "run-1a2b7cef18c9480eb15cb4688c30ce7c",
+      "snapshot_id": "snap-4a6084f0a6b24b9daa7446f23b873d27",
+      "source_revision": "sha256:75acb246045e195624021711446fc99b3b51ea3f1561cf89fdfc468ee45355a6",
+      "input_hash": "730d86652cb651c866e0aff7fe9b8a73adbe5dd0765cad8d80bb497da420392e"
+    },
+    {
+      "group": "jeecg",
+      "method": "POST",
+      "path": "/sys/sysDepartRole/deptRoleUserAdd",
+      "api_id": "api-1c3cf23e8194ecab7bc358dd",
+      "stage1_run_id": "run-1a2b7cef18c9480eb15cb4688c30ce7c",
+      "snapshot_id": "snap-4a6084f0a6b24b9daa7446f23b873d27",
+      "source_revision": "sha256:75acb246045e195624021711446fc99b3b51ea3f1561cf89fdfc468ee45355a6",
+      "input_hash": "9767688596320fe51685e7e16c82d8aeacefcb2733c703905d2316c35669ef92"
+    },
+    {
+      "group": "jeecg",
+      "method": "POST",
+      "path": "/sys/role/add",
+      "api_id": "api-8e53c3d0f726e2963a6cadb8",
+      "stage1_run_id": "run-1a2b7cef18c9480eb15cb4688c30ce7c",
+      "snapshot_id": "snap-4a6084f0a6b24b9daa7446f23b873d27",
+      "source_revision": "sha256:75acb246045e195624021711446fc99b3b51ea3f1561cf89fdfc468ee45355a6",
+      "input_hash": "f8537aa68e6ee22769daa66a125823fe9d6d452c5845ded432e9be89b2ed5a33"
+    },
+    {
+      "group": "jeecg",
+      "method": "PUT",
+      "path": "/sys/role/edit",
+      "api_id": "api-6fbf8f1463409613eb0db8b0",
+      "stage1_run_id": "run-1a2b7cef18c9480eb15cb4688c30ce7c",
+      "snapshot_id": "snap-4a6084f0a6b24b9daa7446f23b873d27",
+      "source_revision": "sha256:75acb246045e195624021711446fc99b3b51ea3f1561cf89fdfc468ee45355a6",
+      "input_hash": "903f6855a8030d910484d35dc9cdd97cf3678107c8c5e584e17020afdbbe27d4"
+    },
+    {
+      "group": "jeecg",
+      "method": "GET",
+      "path": "/sys/role/listByTenant",
+      "api_id": "api-1e0110ac10a8cafa6c2aadef",
+      "stage1_run_id": "run-1a2b7cef18c9480eb15cb4688c30ce7c",
+      "snapshot_id": "snap-4a6084f0a6b24b9daa7446f23b873d27",
+      "source_revision": "sha256:75acb246045e195624021711446fc99b3b51ea3f1561cf89fdfc468ee45355a6",
+      "input_hash": "2cebe7ab9a5ac06a07b41f784b6d808bca5707ae13e2737fdad36fd114fd4776"
+    },
+    {
+      "group": "jeecg",
+      "method": "GET",
+      "path": "/sys/role/list",
+      "api_id": "api-b6b96e1f94a6508498889f2c",
+      "stage1_run_id": "run-1a2b7cef18c9480eb15cb4688c30ce7c",
+      "snapshot_id": "snap-4a6084f0a6b24b9daa7446f23b873d27",
+      "source_revision": "sha256:75acb246045e195624021711446fc99b3b51ea3f1561cf89fdfc468ee45355a6",
+      "input_hash": "b1a5ecf1359a189a57624e2072c36e88312d8a4e2c3bb05af3cde9e9adb31af6"
+    },
+    {
+      "group": "jeecg",
+      "method": "GET",
+      "path": "/sys/tenant/list",
+      "api_id": "api-623bab8964c71e2c3831bb79",
+      "stage1_run_id": "run-1a2b7cef18c9480eb15cb4688c30ce7c",
+      "snapshot_id": "snap-4a6084f0a6b24b9daa7446f23b873d27",
+      "source_revision": "sha256:75acb246045e195624021711446fc99b3b51ea3f1561cf89fdfc468ee45355a6",
+      "input_hash": "29252e72700e0c9cf7975b94e1624a94ae3d1fafc88652f26137fd3517f81d71"
+    },
+    {
+      "group": "jeecg",
+      "method": "GET",
+      "path": "/sys/sysDepart/queryMyDeptTreeList",
+      "api_id": "api-ad2a4c772bf36187cd9e8f00",
+      "stage1_run_id": "run-1a2b7cef18c9480eb15cb4688c30ce7c",
+      "snapshot_id": "snap-4a6084f0a6b24b9daa7446f23b873d27",
+      "source_revision": "sha256:75acb246045e195624021711446fc99b3b51ea3f1561cf89fdfc468ee45355a6",
+      "input_hash": "8f73ad555b1b5ce219e121bd89a8c65c83817fe04dccd5e502f38c20aca28e82"
+    },
+    {
+      "group": "jeecg",
+      "method": "DELETE",
+      "path": "/sys/tenant/exitUserTenant",
+      "api_id": "api-570b4668dc4b0d07f9d35359",
+      "stage1_run_id": "run-1a2b7cef18c9480eb15cb4688c30ce7c",
+      "snapshot_id": "snap-4a6084f0a6b24b9daa7446f23b873d27",
+      "source_revision": "sha256:75acb246045e195624021711446fc99b3b51ea3f1561cf89fdfc468ee45355a6",
+      "input_hash": "8c575da6bccd11ecfad73c964cc2f163746fac5c60ead7e43ff79491698428e3"
+    },
+    {
+      "group": "jeecg",
+      "method": "GET",
+      "path": "/sys/randomImage/{key}",
+      "api_id": "api-1d78d3b89873b20f4246f5a5",
+      "stage1_run_id": "run-1a2b7cef18c9480eb15cb4688c30ce7c",
+      "snapshot_id": "snap-4a6084f0a6b24b9daa7446f23b873d27",
+      "source_revision": "sha256:75acb246045e195624021711446fc99b3b51ea3f1561cf89fdfc468ee45355a6",
+      "input_hash": "d6d1071ff2c46dbf36d9b85cabe2c3aa56caff810c18a7e9ae776cb5b641d133"
+    },
+    {
+      "group": "control",
+      "method": "GET",
+      "path": "/c01/records",
+      "api_id": "api-60fcfedc4b048c8d687828ff",
+      "stage1_run_id": "run-db62e62fb2b941609d06eaf44d207c83",
+      "snapshot_id": "snap-5fb71ce47bb349c9960c28f2ce783546",
+      "source_revision": "sha256:abde81e07055891eeb3070d38a7f56e9d6636ed1b8e92045b2df16e0b8737236",
+      "input_hash": "7a91602e1c89774c714b1bb19b4b52987f5aec08e56b9923779d3c90a5e4cc8c"
+    },
+    {
+      "group": "control",
+      "method": "GET",
+      "path": "/c02/records",
+      "api_id": "api-5b57c353b489b887d73737bb",
+      "stage1_run_id": "run-db62e62fb2b941609d06eaf44d207c83",
+      "snapshot_id": "snap-5fb71ce47bb349c9960c28f2ce783546",
+      "source_revision": "sha256:abde81e07055891eeb3070d38a7f56e9d6636ed1b8e92045b2df16e0b8737236",
+      "input_hash": "1d6f80a1fdf38cb78212ed45f992435a2f90c66038d31cb1f49b32974ad7517b"
+    },
+    {
+      "group": "control",
+      "method": "POST",
+      "path": "/c03/records",
+      "api_id": "api-9f755c267916da2f00d6daf4",
+      "stage1_run_id": "run-db62e62fb2b941609d06eaf44d207c83",
+      "snapshot_id": "snap-5fb71ce47bb349c9960c28f2ce783546",
+      "source_revision": "sha256:abde81e07055891eeb3070d38a7f56e9d6636ed1b8e92045b2df16e0b8737236",
+      "input_hash": "2327cd1a58e99041a7bb728fe7f6aa6d7cd5c78058c824a626e2b6c4faade7b2"
+    },
+    {
+      "group": "control",
+      "method": "POST",
+      "path": "/c04/records",
+      "api_id": "api-079c77dd436bf790f943c91c",
+      "stage1_run_id": "run-db62e62fb2b941609d06eaf44d207c83",
+      "snapshot_id": "snap-5fb71ce47bb349c9960c28f2ce783546",
+      "source_revision": "sha256:abde81e07055891eeb3070d38a7f56e9d6636ed1b8e92045b2df16e0b8737236",
+      "input_hash": "be5a46165534e7b9eb30e6a70dc2931e798f61772d7d8c7b5dce253d8744a7d2"
+    },
+    {
+      "group": "control",
+      "method": "POST",
+      "path": "/c05/records",
+      "api_id": "api-32c28fca9b313c08c325c35b",
+      "stage1_run_id": "run-db62e62fb2b941609d06eaf44d207c83",
+      "snapshot_id": "snap-5fb71ce47bb349c9960c28f2ce783546",
+      "source_revision": "sha256:abde81e07055891eeb3070d38a7f56e9d6636ed1b8e92045b2df16e0b8737236",
+      "input_hash": "7596995f695dadeb4765fcd66e12bc0b57eaf2ef3ea529976d65e3ce27db0530"
+    },
+    {
+      "group": "control",
+      "method": "POST",
+      "path": "/c06/records",
+      "api_id": "api-74c8ef3f497b2c30039713fd",
+      "stage1_run_id": "run-db62e62fb2b941609d06eaf44d207c83",
+      "snapshot_id": "snap-5fb71ce47bb349c9960c28f2ce783546",
+      "source_revision": "sha256:abde81e07055891eeb3070d38a7f56e9d6636ed1b8e92045b2df16e0b8737236",
+      "input_hash": "90b4242f3b7960f1abe696ab43a68562a1d59120fc3466e4872d42f726964f38"
+    },
+    {
+      "group": "control",
+      "method": "POST",
+      "path": "/c07/records",
+      "api_id": "api-4c9c07867c9182c8c41fa98a",
+      "stage1_run_id": "run-db62e62fb2b941609d06eaf44d207c83",
+      "snapshot_id": "snap-5fb71ce47bb349c9960c28f2ce783546",
+      "source_revision": "sha256:abde81e07055891eeb3070d38a7f56e9d6636ed1b8e92045b2df16e0b8737236",
+      "input_hash": "cdf5b6bf4d7f374838ee5857215593fca1b06de8fc7b30c7f1daa4214219bf2c"
+    },
+    {
+      "group": "control",
+      "method": "POST",
+      "path": "/c08/records",
+      "api_id": "api-9316fd5adf9ea460c5fcdc8d",
+      "stage1_run_id": "run-db62e62fb2b941609d06eaf44d207c83",
+      "snapshot_id": "snap-5fb71ce47bb349c9960c28f2ce783546",
+      "source_revision": "sha256:abde81e07055891eeb3070d38a7f56e9d6636ed1b8e92045b2df16e0b8737236",
+      "input_hash": "2feed1ba099efb61aee36207f783b7a2e6468e9e8853b6b7d0020f083086d90e"
+    }
+  ],
+  "expectations_sha256": "804b7abf958195c64df2796916fca97fe9b70ee0f91eca11ea6bb49c05e67b5d",
+  "jeecg_expectations_sha256": "965e7334fc5f9d1118703855b9b31eeb4e31c9505812929d201e0ea1a197187c",
+  "summary": {
+    "planned": 18,
+    "executed": 8,
+    "completed": 5,
+    "failed": 3,
+    "not_executed": 10,
+    "tokens": 281332,
+    "checkpoint_tokens": 281332,
+    "halted_reason": "consecutive_budget_reservation_failures",
+    "all_gates_passed": false,
+    "stage3_started": false
+  },
+  "first_attempts": [
+    {
+      "index": 0,
+      "group": "jeecg",
+      "path": "/sys/tenant/changeOwenUserTenant",
+      "state": "completed",
+      "semantic_review": {
+        "status": "not_passed",
+        "note": "Correct target membership and split writes; bindings.source incorrectly uses body instead of frozen query/form; read-scope claim also inconsistent."
+      },
+      "job_id": "run-ae450acca10a4f4e9e209261ed95f29a",
+      "status": "partial",
+      "tokens": 28413,
+      "error": null,
+      "checkpoint_tokens": 28413,
+      "usage_checkpoint_disagreement": false,
+      "tool_events": 2,
+      "model_turns": 3,
+      "analysis_complete": true,
+      "operations": 2,
+      "checks": 2,
+      "unresolved": 11,
+      "unconfirmed": 0,
+      "structural_issues": []
+    },
+    {
+      "index": 1,
+      "group": "jeecg",
+      "path": "/sys/sysDepartRole/deptRoleUserAdd",
+      "state": "completed",
+      "semantic_review": {
+        "status": "partial",
+        "note": "Role relation insert/delete and client oldRoleId preserved. Permission annotation/proxy effect remains an unconfirmed candidate."
+      },
+      "job_id": "run-3073ce30c407419fa902650f58d47262",
+      "status": "partial",
+      "tokens": 33188,
+      "error": null,
+      "checkpoint_tokens": 33188,
+      "usage_checkpoint_disagreement": false,
+      "tool_events": 2,
+      "model_turns": 3,
+      "analysis_complete": true,
+      "operations": 2,
+      "checks": 1,
+      "unresolved": 15,
+      "unconfirmed": 1,
+      "structural_issues": []
+    },
+    {
+      "index": 2,
+      "group": "jeecg",
+      "path": "/sys/role/add",
+      "state": "completed",
+      "semantic_review": {
+        "status": "not_passed",
+        "note": "Controller time overwrite is in observations but contradicts the core operation claim of only roleCode being overwritten."
+      },
+      "job_id": "run-eb2977b45f524a35835170d728d6adaf",
+      "status": "partial",
+      "tokens": 24733,
+      "error": null,
+      "checkpoint_tokens": 24733,
+      "usage_checkpoint_disagreement": false,
+      "tool_events": 2,
+      "model_turns": 3,
+      "analysis_complete": true,
+      "operations": 1,
+      "checks": 1,
+      "unresolved": 4,
+      "unconfirmed": 1,
+      "structural_issues": []
+    },
+    {
+      "index": 3,
+      "group": "jeecg",
+      "path": "/sys/role/edit",
+      "state": "failed",
+      "semantic_review": {
+        "status": "failed",
+        "note": "Unread anchor, then invalid field reference after the permitted correction."
+      },
+      "job_id": "run-ee6163045dd34d6e8226c188b90393e4",
+      "status": "partial",
+      "tokens": 45444,
+      "error": "submission_validation_failed",
+      "checkpoint_tokens": 45444,
+      "usage_checkpoint_disagreement": false,
+      "tool_events": 3,
+      "model_turns": 4,
+      "analysis_complete": false,
+      "operations": 2,
+      "checks": 0,
+      "unresolved": 3,
+      "unconfirmed": 0,
+      "structural_issues": []
+    },
+    {
+      "index": 4,
+      "group": "jeecg",
+      "path": "/sys/role/listByTenant",
+      "state": "completed",
+      "semantic_review": {
+        "status": "partial",
+        "note": "Disabled tenantId override and request-only query facts preserved; QueryGenerator scope incomplete."
+      },
+      "job_id": "run-d5f2372e662d41e98cc170e7a1c0dee3",
+      "status": "partial",
+      "tokens": 28473,
+      "error": null,
+      "checkpoint_tokens": 28473,
+      "usage_checkpoint_disagreement": false,
+      "tool_events": 2,
+      "model_turns": 3,
+      "analysis_complete": true,
+      "operations": 1,
+      "checks": 1,
+      "unresolved": 33,
+      "unconfirmed": 0,
+      "structural_issues": []
+    },
+    {
+      "index": 5,
+      "group": "jeecg",
+      "path": "/sys/role/list",
+      "state": "completed",
+      "semantic_review": {
+        "status": "partial",
+        "note": "Mapper tenantLine=true and client filters recorded; permission effect remains conditional/unconfirmed."
+      },
+      "job_id": "run-618640ba6be148ccbfba868fdd52b501",
+      "status": "partial",
+      "tokens": 42407,
+      "error": null,
+      "checkpoint_tokens": 42407,
+      "usage_checkpoint_disagreement": false,
+      "tool_events": 3,
+      "model_turns": 4,
+      "analysis_complete": true,
+      "operations": 1,
+      "checks": 1,
+      "unresolved": 5,
+      "unconfirmed": 1,
+      "structural_issues": []
+    },
+    {
+      "index": 6,
+      "group": "jeecg",
+      "path": "/sys/tenant/list",
+      "state": "failed",
+      "semantic_review": {
+        "status": "failed",
+        "note": "Unread anchor; insufficient remaining budget for correction."
+      },
+      "job_id": "run-216c52988a5949f6aa5296a22f2f0d21",
+      "status": "partial",
+      "tokens": 33034,
+      "error": "token_budget_reserve_exhausted",
+      "checkpoint_tokens": 33034,
+      "usage_checkpoint_disagreement": false,
+      "tool_events": 2,
+      "model_turns": 2,
+      "analysis_complete": false,
+      "operations": 1,
+      "checks": 0,
+      "unresolved": 32,
+      "unconfirmed": 0,
+      "structural_issues": []
+    },
+    {
+      "index": 7,
+      "group": "jeecg",
+      "path": "/sys/sysDepart/queryMyDeptTreeList",
+      "state": "failed",
+      "semantic_review": {
+        "status": "failed",
+        "note": "Nonexistent request field reference; insufficient remaining budget for correction."
+      },
+      "job_id": "run-86b29d6268c0474088239e3383e6f502",
+      "status": "partial",
+      "tokens": 45640,
+      "error": "token_budget_reserve_exhausted",
+      "checkpoint_tokens": 45640,
+      "usage_checkpoint_disagreement": false,
+      "tool_events": 3,
+      "model_turns": 3,
+      "analysis_complete": false,
+      "operations": 2,
+      "checks": 0,
+      "unresolved": 14,
+      "unconfirmed": 0,
+      "structural_issues": []
+    },
+    {
+      "index": 8,
+      "group": "jeecg",
+      "path": "/sys/tenant/exitUserTenant",
+      "state": "not_submitted",
+      "semantic_review": {
+        "status": "not_executed",
+        "note": "Round stopped; no replacement with historical tasks."
+      }
+    },
+    {
+      "index": 9,
+      "group": "jeecg",
+      "path": "/sys/randomImage/{key}",
+      "state": "not_submitted",
+      "semantic_review": {
+        "status": "not_executed",
+        "note": "Round stopped; no replacement with historical tasks."
+      }
+    },
+    {
+      "index": 10,
+      "group": "control",
+      "path": "/c01/records",
+      "state": "not_submitted",
+      "semantic_review": {
+        "status": "not_executed",
+        "note": "Round stopped; no replacement with historical tasks."
+      }
+    },
+    {
+      "index": 11,
+      "group": "control",
+      "path": "/c02/records",
+      "state": "not_submitted",
+      "semantic_review": {
+        "status": "not_executed",
+        "note": "Round stopped; no replacement with historical tasks."
+      }
+    },
+    {
+      "index": 12,
+      "group": "control",
+      "path": "/c03/records",
+      "state": "not_submitted",
+      "semantic_review": {
+        "status": "not_executed",
+        "note": "Round stopped; no replacement with historical tasks."
+      }
+    },
+    {
+      "index": 13,
+      "group": "control",
+      "path": "/c04/records",
+      "state": "not_submitted",
+      "semantic_review": {
+        "status": "not_executed",
+        "note": "Round stopped; no replacement with historical tasks."
+      }
+    },
+    {
+      "index": 14,
+      "group": "control",
+      "path": "/c05/records",
+      "state": "not_submitted",
+      "semantic_review": {
+        "status": "not_executed",
+        "note": "Round stopped; no replacement with historical tasks."
+      }
+    },
+    {
+      "index": 15,
+      "group": "control",
+      "path": "/c06/records",
+      "state": "not_submitted",
+      "semantic_review": {
+        "status": "not_executed",
+        "note": "Round stopped; no replacement with historical tasks."
+      }
+    },
+    {
+      "index": 16,
+      "group": "control",
+      "path": "/c07/records",
+      "state": "not_submitted",
+      "semantic_review": {
+        "status": "not_executed",
+        "note": "Round stopped; no replacement with historical tasks."
+      }
+    },
+    {
+      "index": 17,
+      "group": "control",
+      "path": "/c08/records",
+      "state": "not_submitted",
+      "semantic_review": {
+        "status": "not_executed",
+        "note": "Round stopped; no replacement with historical tasks."
+      }
+    }
+  ],
+  "checks": {
+    "worker_tests": 70,
+    "api_tests": 20,
+    "postgres_tests": 20,
+    "typescript": "passed",
+    "web_build": "passed",
+    "stage1": {
+      "api_ids_stable": 1016,
+      "new_api_count": 1016,
+      "field_bindings": 6795,
+      "stage1_unknown_apis": 91,
+      "sse_resume_job": "run-ae450acca10a4f4e9e209261ed95f29a",
+      "event_count": 56,
+      "resume_cursor": 29
+    },
+    "compatibility": {
+      "historical_results_unchanged": 99,
+      "frozen_images_unchanged": {
+        "api": "sha256:2aca7fe30da1cde663130211fc46de7fff53fc735bd229179d6aa637c38d4c58",
+        "agent-worker": "sha256:cea7ff2c6d665de9961d49592d034dc5b1296a28cee76113ea49f42258a17ba9",
+        "web": "sha256:8733f1b5514dc805100e1f91a4c19e0b8a0227ae0c0c03f084062e5741784dd8"
+      },
+      "incompatible_old_version_rejected": true
+    },
+    "lifecycle": {
+      "reference": "run-ae450acca10a4f4e9e209261ed95f29a",
+      "mode": "replay_of_real_checkpoint_no_model_calls",
+      "cancel": {
+        "job_id": "run-81a7fc479b754bb7a183a1fc844a8048",
+        "checkpoint_retained": true
+      },
+      "restart": {
+        "job_id": "run-42ea9b2b956a4bcd827b95296f281fcb",
+        "checkpoint_retained": true,
+        "late_write_rejected": true
+      },
+      "compatible_continuation": {
+        "job_id": "run-152f983f45534d5d8ebb69819fff9cfc",
+        "created": true,
+        "cancelled_before_model": true
+      }
+    }
+  }
+}

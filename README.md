@@ -130,4 +130,4 @@ python3 scripts/stage2-smoke.py --stage1-run <run_id> --all
 
 ## 前三批补齐
 
-Stage 2 分析器 1.1.1 增加条件、执行效果和调用处理的审计校验；公共格式仍为 v0.4。实施和冻结验收方式见 [补齐说明](docs/hardening-v1.1.md)，最终 case 分类见 [评估规范](docs/final-case-evaluation.md)。历史批次报告不覆盖，首次完整验收见 [统一重新验收记录](docs/acceptance-hardening.md)，最新结果见 [1.1.1 收费重验](docs/acceptance-hardening-v111.md)：18 项中 17 项正常结束、1 项失败，严格语义对照 7/8，进入批次四的门槛仍未满足。Stage 3—4 尚未实现。
+Stage 2 当前分析器为 1.1.8，公共格式仍为 v0.4。修正见 [1.1.8 实现说明](docs/hardening-v1.1.8.md)，最终 case 分类见 [评估规范](docs/final-case-evaluation.md)。历史报告保留，最新结果见 [1.1.8 固定版本验收](docs/acceptance-hardening-v118.md)：Docker Worker 70 项、API 与 PostgreSQL 各 20 项通过；真实模型计划 18 项，实际执行 8 项，5 项正常提交、3 项失败，累计 281,332 Token。连续预算失败后停止，余下 10 项未执行；有效结果仍有来源和描述问题，不能视为语义验收通过。Stage 3—4 尚未实现，进入批次四的门槛仍未满足。
