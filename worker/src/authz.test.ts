@@ -209,3 +209,17 @@ test('initial tasks can perform a focused read after the bundle before final sub
  assert.equal(requests,3);assert.equal(last.detail.analysis_complete,true);assert.equal(last.detail.tool_calls,3);
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
 });
+
+test('one correction uses bounded actual source, accepts proof IDs and retains prior uncertainties',async()=>{
+ const {createServer}=await import('node:http');const {entry,file}=await setup();let requests=0;let last:any;let proof='';
+ const server=createServer(async(req,res)=>{let body='';for await(const c of req)body+=c;requests++;const input=JSON.parse(body);
+ if(requests===2){const msg=input.messages.find((m:any)=>m.role==='tool');const v=JSON.parse(msg.content);proof=v.proof_catalog.find((r:any)=>r.kind==='operation')?.id||v.proof_catalog[0].id;}
+ if(requests===3){assert.equal(input.messages.length,1);const content=input.messages[0].content;const compact=JSON.parse(typeof content==='string'?content:content[0].text);assert.ok(compact.error.includes('binding_source_mismatch'));assert.ok(compact.source.blocks.some((b:any)=>b.content.includes('save(id)')));assert.ok(compact.field_refs.includes('query:id'));}
+ const ev={file,start_line:1,end_line:1};const name=requests===1?'get_analysis_bundle':'submit_authorization';
+ const args=requests===1?{}:{operations:[{ref:'save',description:'Save target',...(requests===3?{evidence_ids:[proof]}:{evidence:[ev]})}],checks:requests===2?[{kind:'resource_relation',fields:['query:id'],rule:'Target relationship',execution:'enforced',evidence:[ev],effect_evidence:[ev],operation_refs:['save'],bindings:[{symbol:'id',source:'body:id'}]}]:[],scope:['entry'],unresolved:requests===2?['pending helper review']:[]};
+ const chunk={id:'repair-fixture',object:'chat.completion.chunk',created:1,model:'fixture'};res.writeHead(200,{'Content-Type':'text/event-stream'});res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{role:'assistant',tool_calls:[{index:0,id:'repair'+requests,type:'function',function:{name,arguments:JSON.stringify(args)}}]},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[],usage:{prompt_tokens:100,completion_tokens:20,total_tokens:120}})+'\n\n');res.end('data: [DONE]\n\n');
+ });await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const port=(server.address() as{port:number}).port;
+ try{await runStage2({id:'repair-fixture',snapshot_id:'snap',source_revision:'rev',options:{api_id:entry.api.api_id,stage1_run_id:'s1',input_hash:'hash'}},{...config,apiKey:'fixture',modelId:'fixture',baseUrl:`http://127.0.0.1:${port}/v1`},new AbortController().signal,limits,async(route,b:any)=>{if(route.endsWith('/context'))return{source:entry,input_hash:'hash'};last=structuredClone(b);return{};},()=>{});
+ assert.equal(requests,3);assert.equal(last.detail.analysis_complete,true);assert.equal(last.detail.repair_context_used,true);assert.ok(last.data.unresolved.includes('pending helper review'));assert.equal(last.detail.submission_errors.length,1);
+ }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
+});
