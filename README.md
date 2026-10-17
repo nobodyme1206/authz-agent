@@ -130,4 +130,4 @@ python3 scripts/stage2-smoke.py --stage1-run <run_id> --all
 
 ## 前三批补齐
 
-Stage 2 分析器 1.1.1 增加条件、执行效果和调用处理的审计校验；公共格式仍为 v0.4。实施和冻结验收方式见 [补齐说明](docs/hardening-v1.1.md)，最终 case 分类见 [评估规范](docs/final-case-evaluation.md)。历史批次报告不覆盖，最新验收将另行记录。Stage 3—4 尚未实现。
+Stage 2 分析器 1.1.1 增加条件、执行效果和调用处理的审计校验；公共格式仍为 v0.4。实施和冻结验收方式见 [补齐说明](docs/hardening-v1.1.md)，最终 case 分类见 [评估规范](docs/final-case-evaluation.md)。历史批次报告不覆盖，最新结论见 [统一重新验收记录](docs/acceptance-hardening.md)：18 项首次运行中 5 项失败，进入批次四的门槛尚未满足。Stage 3—4 尚未实现。
