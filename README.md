@@ -127,3 +127,7 @@ python3 scripts/stage2-smoke.py --stage1-run <run_id> --all
 ```
 
 实现与限制见 [Stage 2 说明](docs/stage2.md)，衔接核查见 [Stage 1 衔接记录](docs/stage1-handoff.md)，真实模型、测试及剩余问题见 [批次三验收记录](docs/acceptance-batch3.md)。Stage 2 只提取实际实现，checks 为空或结果 partial 都不能推导存在漏洞。
+
+## 前三批补齐
+
+Stage 2 分析器 1.1.0 增加条件、执行效果和调用处理的审计校验；公共格式仍为 v0.4。实施和冻结验收方式见 [补齐说明](docs/hardening-v1.1.md)，最终 case 分类见 [评估规范](docs/final-case-evaluation.md)。历史批次报告不覆盖，最新验收将另行记录。Stage 3—4 尚未实现。

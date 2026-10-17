@@ -1,0 +1,61 @@
+{
+  "policy": "Human evaluation only. Never copy to analyzed snapshots or model input. These are semantic controls, not vulnerability ground truth.",
+  "cases": [
+    {
+      "case": "c01",
+      "method": "GET",
+      "path": "/c01/records",
+      "resource_scope_check_expected": true,
+      "contrast_group": "sql"
+    },
+    {
+      "case": "c02",
+      "method": "GET",
+      "path": "/c02/records",
+      "resource_scope_check_expected": false,
+      "contrast_group": "sql"
+    },
+    {
+      "case": "c03",
+      "method": "POST",
+      "path": "/c03/records",
+      "resource_scope_check_expected": true,
+      "contrast_group": "order"
+    },
+    {
+      "case": "c04",
+      "method": "POST",
+      "path": "/c04/records",
+      "resource_scope_check_expected": false,
+      "contrast_group": "order"
+    },
+    {
+      "case": "c05",
+      "method": "POST",
+      "path": "/c05/records",
+      "resource_scope_check_expected": true,
+      "contrast_group": "exception"
+    },
+    {
+      "case": "c06",
+      "method": "POST",
+      "path": "/c06/records",
+      "resource_scope_check_expected": false,
+      "contrast_group": "exception"
+    },
+    {
+      "case": "c07",
+      "method": "POST",
+      "path": "/c07/records",
+      "resource_scope_check_expected": true,
+      "contrast_group": "configuration"
+    },
+    {
+      "case": "c08",
+      "method": "POST",
+      "path": "/c08/records",
+      "resource_scope_check_expected": false,
+      "contrast_group": "configuration"
+    }
+  ]
+}

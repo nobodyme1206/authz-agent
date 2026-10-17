@@ -85,3 +85,10 @@ test('Comparable is a standard behaviour interface, not a missing DTO property p
  const {entries}=await fixture('package p; @RestController class C { @GetMapping("/x") void run(Item q){} } @Data class Item implements Comparable<Item>{private String id; public int compareTo(Item x){return 0;} }');
  const api=entries[0];assert.ok(!api.api.unresolved.some(u=>u.includes('Comparable')));assert.deepEqual(api.api.request_fields.map(f=>f.name),['id']);
 });
+
+test('deep helper inputs and nested model proposals remain explicitly bounded rather than invented',async()=>{
+ const {index,entries}=await fixture('package p; @RestController class C{@PostMapping("/x")void run(@RequestBody JSONObject p){a(p);}void a(JSONObject p){b(p);}void b(JSONObject p){c(p);}void c(JSONObject p){p.getString("deep");}}');
+ const e=entries[0],proof={file:e.api.file,start_line:1,end_line:1};assert.ok(e.api.unresolved.some(x=>x.includes('超过两层')));
+ const r=mergeDelta(e,{fields:[{name:'deep',location:'body',type:'string',evidence:[proof]},{name:'profile.id',location:'body',type:'string',evidence:[proof]}],resolved:[...e.api.unresolved],unresolved:[]},[proof],index);
+ assert.equal(r.detail.enrichment_accepted,0);assert.ok(r.api.unresolved.some(x=>x.includes('超过两层')));assert.equal(r.api.request_fields.length,0);
+});

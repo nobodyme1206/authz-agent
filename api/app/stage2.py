@@ -8,7 +8,7 @@ from jsonschema import ValidationError
 from .db import Job, Snapshot, Stage1Api, Stage2State
 from .contracts import validate_result
 
-ANALYZER_VERSION = 'authz-java-1.0.0'
+ANALYZER_VERSION = 'authz-java-1.1.0'
 TERMINAL = {'completed', 'failed', 'cancelled'}
 
 
@@ -90,6 +90,15 @@ def save_checkpoint(db, job, data, detail, root):
                     raise ValueError('upstream_issue_dropped')
             if detail.get('mandatory_unresolved') and not set(detail['mandatory_unresolved']) <= set(data['unresolved']):
                 raise ValueError('navigation_issue_dropped')
+            audit = detail.get('audit')
+            if detail.get('analysis_complete') and audit is not None:
+                if not set(audit.get('mandatory_unresolved', [])) <= set(data['unresolved']):
+                    raise ValueError('audit_issue_dropped')
+                for check in data['checks']:
+                    if len(data.get('operations', [])) > 1 and not check.get('operation_ids'):
+                        raise ValueError('operation_scope_required')
+                    if audit.get('condition_dependencies') and 'jwt' in check['rule'].lower() and not check.get('conditions'):
+                        raise ValueError('runtime_condition_required')
         except (ValidationError, ValueError, KeyError, TypeError):
             raise HTTPException(422, 'invalid_stage2_record')
         state.data = data

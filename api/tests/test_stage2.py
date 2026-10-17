@@ -93,3 +93,32 @@ def test_task_kind_filter_preserves_source_discovery(client):
     assert [r['id'] for r in client.get('/api/jobs?kind=stage1_extract').json()]==[j['id']]
     assert [r['id'] for r in client.get('/api/jobs?kind=stage2_analyze').json()]==[new['id']]
     assert client.get('/api/jobs?kind=made_up').status_code==422
+
+
+def test_hardening_audit_cannot_drop_conditions_or_mandatory_issues(client):
+    s,j,e=source(client);new,ctx=start(client,s,j,e);route='/internal/jobs/'+new['id']+'/stage2/checkpoints';p=payload(e,ctx)
+    p['detail']['audit']={'condition_dependencies':[{'id':'external_anonymous_routes'}],'mandatory_unresolved':['opaque guard']}
+    assert client.post(route,headers=H,json=p).status_code==422
+    p['data']['unresolved'].append('opaque guard');p['data']['checks'][0]['rule']='JWT authentication'
+    assert client.post(route,headers=H,json=p).status_code==422
+    p['data']['checks'][0]['conditions']=['excludeUrls must not match this route']
+    assert client.post(route,headers=H,json=p).status_code==200
+
+
+def test_multiple_business_operations_require_explicit_check_scope(client):
+    s,j,e=source(client);new,ctx=start(client,s,j,e);p=payload(e,ctx);route='/internal/jobs/'+new['id']+'/stage2/checkpoints'
+    operation=p['data'].pop('operation');p['data']['operations']=[{'id':'op1',**operation},{'id':'op2',**operation}];p['detail']['audit']={'mandatory_unresolved':[]}
+    assert client.post(route,headers=H,json=p).status_code==422
+    p['data']['checks'][0]['operation_ids']=['op1'];assert client.post(route,headers=H,json=p).status_code==200
+
+
+def test_old_analyzer_results_remain_readable_but_cannot_be_resumed(client):
+    s,j,e=source(client);new,ctx=start(client,s,j,e);p=payload(e,ctx)
+    assert client.post('/internal/jobs/'+new['id']+'/stage2/checkpoints',headers=H,json=p).status_code==200
+    client.post('/internal/jobs/'+new['id']+'/finish',headers=H,json={'boot':'stage-boot','state':'completed'})
+    before=client.get('/api/jobs/'+new['id']+'/result').json()
+    with Session() as db:
+        state=db.get(Stage2State,new['id']);state.analyzer_version='authz-java-1.0.0';db.commit()
+    assert client.get('/api/jobs/'+new['id']+'/result').json()==before
+    body={'kind':'stage2_analyze','snapshot_id':s['id'],'options':{'stage1_run_id':j['id'],'api_id':e['api']['api_id'],'base_run_id':new['id']}}
+    assert client.post('/api/jobs',json=body).status_code==409

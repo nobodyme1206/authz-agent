@@ -6,10 +6,10 @@ import {bare,argumentsOf,ev,first,nodes,text,tokens,type JavaClass,type JavaInde
 import {calls,constant,type ApiEntry} from './spring.ts';
 import {safePath} from './files.ts';
 
-export const ANALYZER_VERSION='authz-java-1.0.0';
+export const ANALYZER_VERSION='authz-java-1.1.0';
 export type SqlStatement={namespace:string;id:string;kind:string;evidence:Evidence;includes:string[];dynamic:string[]};
 export type NavNode={symbol:string;file:string;start_line:number;end_line:number;depth:number;parameters:{name:string;type:string}[]};
-export type Edge={from:string;call:string;line:number;arguments:string[];status:string;targets:string[]};
+export type Edge={from:string;call:string;line:number;arguments:string[];status:string;targets:string[];owner_type?:string};
 export type Candidate={kind:string;description:string;evidence:Evidence;inactive?:boolean};
 export type Navigation={entry:Method;nodes:NavNode[];edges:Edge[];candidates:Candidate[];disabled:Evidence[];unresolved:string[];globals:{symbol:string;evidence:Evidence}[];controls:{symbol:string;value:string;evidence:Evidence}[]};
 export type BackendIndex=JavaIndex&{sql:SqlStatement[];artifactDiagnostics:string[]};
@@ -174,7 +174,9 @@ export function navigate(index:BackendIndex,input:ApiEntry,limits={depth:6,nodes
    if((['DateUtils','SqlInjectionUtil'].includes(call.receiver)||call.receiver==='CommonUtils'&&call.name==='getDatabaseType'||call.receiver==='SpringContextUtils'&&['getHttpServletRequest','getHttpServletResponse','getApplicationContext'].includes(call.name)))status='framework_value_boundary';
    if((status==='unresolved'||status==='ambiguous')&&(utilityReceivers.has(call.receiver)||scalarMethods.has(call.name)||/^(get|set|is)[A-Z]/.test(call.name)&&owner?.fields.some(f=>f.name.toLowerCase()===call.name.replace(/^(get|set|is)/,'').toLowerCase())))status='value_operation';
    if(status==='unresolved'&&['SecurityUtils','TenantContext','JwtUtil','PasswordUtil','TokenUtils'].includes(call.receiver))status='identity_boundary';
-   nav.edges.push({from:key(m),call:(call.receiver?call.receiver+'.':'')+call.name,line:call.line,arguments:raw,status,targets:targets.map(key)});
+   const rawType=locals.get(call.receiver)||call.receiver;
+   const imported=m.owner.imports.find(x=>!x.endsWith('.*')&&x.split('.').at(-1)===bare(rawType));
+   nav.edges.push({from:key(m),call:(call.receiver?call.receiver+'.':'')+call.name,line:call.line,arguments:raw,status,targets:targets.map(key),owner_type:owner?.fqn||imported||rawType});
    if(status==='resolved'){
     if(depth>=limits.depth)nav.unresolved.push('调用超过 '+limits.depth+' 层：'+key(m)+' -> '+call.name);
     else queued.push({method:targets[0],depth:depth+1});

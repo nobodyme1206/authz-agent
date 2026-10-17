@@ -3,7 +3,7 @@ Stops the idle Worker; --exercise-restart is required. This is protocol acceptan
 """
 import argparse,copy,json,subprocess,time,urllib.request,urllib.error,uuid
 from pathlib import Path
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('reference_job');p.add_argument('--exercise-restart',action='store_true');args=p.parse_args();assert args.exercise_restart
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('reference_job');p.add_argument('--exercise-restart',action='store_true');p.add_argument('--output',default='artifacts/stage2-lifecycle.json');args=p.parse_args();assert args.exercise_restart
 base='http://127.0.0.1:3000';boot='checkpoint-replay-'+uuid.uuid4().hex
 
 def request(route,body=None,internal=False):
@@ -58,4 +58,4 @@ try:
  continued=request('/api/jobs',{'kind':'stage2_analyze','snapshot_id':reference['snapshot_id'],'options':{'stage1_run_id':reference['options']['stage1_run_id'],'api_id':reference['options']['api_id'],'base_run_id':j['id']}})
  assert request('/api/jobs/'+continued['id']+'/cancel',{})['state']=='cancelled';report['compatible_continuation']={'job_id':continued['id'],'created':True,'cancelled_before_model':True}
 finally:subprocess.run(['docker','compose','start','agent-worker'],check=True,capture_output=True)
-Path('artifacts/stage2-lifecycle.json').write_text(json.dumps(report,ensure_ascii=False,indent=2));print(json.dumps(report,ensure_ascii=False,indent=2))
+Path(args.output).write_text(json.dumps(report,ensure_ascii=False,indent=2));print(json.dumps(report,ensure_ascii=False,indent=2))
