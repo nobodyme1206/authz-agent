@@ -182,3 +182,16 @@ test('optional review drafts are separate from compact final submission and cann
  assert.equal(requests,3);assert.equal(last.detail.analysis_complete,true);assert.equal(last.detail.audit.rejected_reviews.length,2);assert.ok(last.data.unresolved.includes('remaining helper'));assert.equal(last.detail.review_draft.mechanism_reviews.length,1);
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
 });
+
+test('bounded source bundle supports a two-reply Pi analysis and sequential notes before submission',async()=>{
+ const {createServer}=await import('node:http');const {entry,file}=await setup();let requests=0;let last:any;
+ const server=createServer(async(req,res)=>{let body='';for await(const c of req)body+=c;requests++;const input=JSON.parse(body);
+ if(requests===2){const source=input.messages.filter((m:any)=>m.role==='tool').map((m:any)=>JSON.stringify(m.content)).join('');assert.ok(source.includes('save(id)'));}
+ const e={file:'f1',start_line:1,end_line:1};const calls=requests===1?[{name:'get_analysis_bundle',args:{}}]:[{name:'record_analysis_notes',args:{observations:['No policy inferred; only source read proof fixture']}},{name:'submit_authorization',args:{unresolved:[],scope:['entry and implementation'],operations:[{ref:'save',description:'Observed save(id) source call',anchor:e,evidence:[e]}],checks:[]}}];
+ const chunk={id:'bundle-fixture',object:'chat.completion.chunk',created:1,model:'fixture'};res.writeHead(200,{'Content-Type':'text/event-stream'});
+ res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{role:'assistant',tool_calls:calls.map((c,i)=>({index:i,id:'c'+requests+'-'+i,type:'function',function:{name:c.name,arguments:JSON.stringify(c.args)}}))},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\n');res.write('data: '+JSON.stringify({...chunk,choices:[],usage:{prompt_tokens:100,completion_tokens:20,total_tokens:120}})+'\n\n');res.end('data: [DONE]\n\n');
+ });await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const port=(server.address() as{port:number}).port;
+ try{await runStage2({id:'bundle-fixture',snapshot_id:'snap',source_revision:'rev',options:{api_id:entry.api.api_id,stage1_run_id:'s1',input_hash:'hash'}},{...config,apiKey:'fixture',modelId:'fixture',baseUrl:`http://127.0.0.1:${port}/v1`},new AbortController().signal,limits,async(route,b:any)=>{if(route.endsWith('/context'))return{source:entry,input_hash:'hash',base:{data:{api_id:entry.api.api_id,operation:{description:'Prior read checkpoint',evidence:[{file,start_line:1,end_line:1}]},checks:[],scope:[file],unresolved:[]},detail:{observed:[{file,start_line:1,end_line:1}],agent_observed:[{file,start_line:1,end_line:1}]}}};last=structuredClone(b);return{};},()=>{});
+ assert.equal(requests,2);assert.equal(last.detail.analysis_complete,true);assert.equal(last.detail.bundle_read,true);assert.equal(last.detail.tool_calls,3);assert.equal(last.detail.observations[0],'No policy inferred; only source read proof fixture');assert.ok(last.detail.agent_observed.some((e:any)=>e.file===file));
+ }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
+});

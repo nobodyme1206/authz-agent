@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {parseSource,type Evidence} from './java-index.ts';
 import {extractApis} from './spring.ts';
 import {navigate,type BackendIndex} from './authz-index.ts';
-import {buildAudit,hardenSubmission} from './authz-audit.ts';
+import {buildAudit,hardenSubmission,auditCoverage} from './authz-audit.ts';
 import {requestReservation,estimateContextTokens,calibratedGrowth} from './authz-budget.ts';
 import {finalizeSubmission,type AuthSubmission} from './stage2.ts';
 function fixture(source:string){
@@ -50,6 +50,7 @@ test('different write resources must have separate anchors and explicitly scoped
  const missing=structuredClone(separate);delete missing.checks[0].operation_refs;assert.throws(()=>harden(f,missing),/operation_refs_required/);
  const h=harden(f,separate);assert.equal(h.audit.effect_coverage.filter(e=>!e.operation_refs.length).length,0);
  const out=finalizeSubmission(h.proposal,f.entry,f.nav,f.index,f.reads);assert.equal(out.operations?.length,2);assert.equal(out.checks[0].operation_ids.length,1);
+ separate.checks.push({...separate.checks[0],operation_refs:['unlink']});const distinct=finalizeSubmission(harden(f,separate).proposal,f.entry,f.nav,f.index,f.reads);assert.equal(new Set(distinct.checks.map(c=>c.id)).size,2);
  const omitted=harden(f,proposal(f));assert.ok(omitted.proposal.unresolved.some(x=>x.includes('独立业务操作')));
 });
 test('unknown, duplicate and supporting-only operation refs are never silently discarded',()=>{
@@ -121,4 +122,16 @@ test('context calibration can correct an overestimating planner while reserving 
  const {growth,calibration}=calibratedGrowth(35719,30500,20469);assert.ok(calibration<1);
  assert.ok(requestReservation(30000,60000,20469,677,growth,4096).allowed);
  assert.ok(!requestReservation(54000,60000,20469,677,growth,4096).allowed);
+});
+test('located source and SQL cannot silently count as reviewed without complete reads',()=>{
+ const f=fixture(guarded);f.nav.nodes.push({symbol:'sample.Remote.allow(String)',file:'src/main/java/sample/Remote.java',start_line:5,end_line:10,depth:2,parameters:[]});
+ f.nav.candidates.push({kind:'sql',description:'select sample.Mapper.rows',evidence:f.e(5,8)});
+ const coverage=auditCoverage(f.audit,[f.e(1,6)],f.nav);assert.ok(coverage.unread_methods.some(n=>n.symbol.includes('Remote.allow')));assert.equal(coverage.unread_sql.length,1);assert.ok(coverage.issues.some(x=>x.includes('SQL 范围')));
+});
+test('annotation permission needs reviewed proxy eligibility and explicit applicability',()=>{
+ const f=fixture(guarded.replace('@PostMapping','@RequiresPermissions("edit") @PostMapping')+'class ShiroConfig { Object authorizationAttributeSourceAdvisor(){return advisor;} DefaultAdvisorAutoProxyCreator defaultAdvisorAutoProxyCreator(){creator.setUsePrefix(true);creator.setAdvisorBeanNamePrefix("excluded");return creator;} }');
+ const p=proposal(f);p.checks=[{kind:'action_permission',fields:[],rule:'RequiresPermissions edit',execution:'enforced',operation_refs:['write'],evidence:[f.e(4)],effect_evidence:[f.e(11)]}];
+ assert.ok(f.audit.conditions.some(c=>c.id==='permission_proxy_applicability'));assert.ok(f.audit.mechanisms.some(c=>c.role==='permission_proxy'));
+ const missing=harden(f,p);assert.equal(missing.proposal.checks.length,0);assert.ok(missing.proposal.unresolved.some(x=>x.includes('permission_proxy_applicability')));
+ p.checks[0].conditions=['仅当当前外部调用实际经过匹配 Shiro advisor 的代理，不能从一个 creator 的排除前缀推导全部 AOP 关闭'];assert.equal(harden(f,p).proposal.checks.length,1);
 });
